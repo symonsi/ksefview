@@ -15,6 +15,12 @@ def get(el, path):
     return x.text.strip() if x is not None and x.text else ""
 
 
+def format_date(dt):
+    if not dt:
+        return ""
+    return dt.split("T")[0]
+
+
 def parse_invoice(root):
     data = {}
 
@@ -23,11 +29,11 @@ def parse_invoice(root):
     data["ksef_number"] = get(root, ".//fa:KSeFNumber")
 
     # DATY
-    data["data_wystawienia"] = get(root, ".//fa:P_1")
-    data["data_utworzenia"] = get(root, ".//fa:DataWytworzeniaFa")
-    data["data_zaplaty"] = get(root, ".//fa:DataZaplaty")
-    data["data_zamowienia"] = get(root, ".//fa:DataZamowienia")
-    data["data_ksef"] = get(root, ".//fa:KSeFDate")
+    data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
+    data["data_utworzenia"] = format_date(get(root, ".//fa:DataWytworzeniaFa"))
+    data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
+    data["data_zamowienia"] = format_date(get(root, ".//fa:DataZamowienia"))
+    data["data_ksef"] = format_date(get(root, ".//fa:KSeFDate"))
 
     # Sprzedawca
     sprzedawca = root.find(".//fa:Podmiot1", NS)
@@ -88,12 +94,12 @@ def html_invoice(d):
             <td>{i}</td>
             <td style="text-align:left">{item['nazwa']}</td>
             <td>{item['ilosc']} {item['jm']}</td>
-            <td>{item['cena']:.2f}</td>
-            <td>{item['rabat']:.2f}</td>
-            <td>{item['netto']:.2f}</td>
+            <td class="num">{item['cena']:.2f}</td>
+            <td class="num">{item['rabat']:.2f}</td>
+            <td class="num">{item['netto']:.2f}</td>
             <td>{item['vat_proc']}%</td>
-            <td>{item['vat_kwota']:.2f}</td>
-            <td><b>{item['brutto']:.2f}</b></td>
+            <td class="num">{item['vat_kwota']:.2f}</td>
+            <td class="num"><b>{item['brutto']:.2f}</b></td>
         </tr>
         """
 
@@ -107,32 +113,74 @@ def html_invoice(d):
             background:white; padding:30px; max-width:1100px;
             margin:auto; box-shadow:0 0 10px rgba(0,0,0,0.2);
         }}
-        h1 {{ text-align:center; }}
-        .row {{ display:flex; justify-content:space-between; margin-top:10px; }}
+
+        .top {{
+            display:flex;
+            justify-content:space-between;
+            margin-bottom:10px;
+        }}
+
+        .dates table {{
+            font-size:13px;
+        }}
+
+        .dates td {{
+            padding:2px 8px;
+        }}
+
+        .row {{ display:flex; justify-content:space-between; margin-top:15px; }}
         .box {{ width:48%; }}
-        table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
-        th, td {{ border:1px solid #ccc; padding:6px; text-align:center; }}
+
+        table.main {{
+            width:100%;
+            border-collapse:collapse;
+            margin-top:20px;
+        }}
+
+        th, td {{
+            border:1px solid #ccc;
+            padding:6px;
+        }}
+
         th {{ background:#f0f0f0; }}
-        .total {{ text-align:right; margin-top:20px; font-size:18px; font-weight:bold; }}
-        .dates {{ margin-top:10px; font-size:14px; }}
+
+        .num {{
+            text-align:right;
+        }}
+
+        .total {{
+            text-align:right;
+            margin-top:20px;
+            font-size:18px;
+            font-weight:bold;
+        }}
     </style>
     </head>
 
     <body>
         <div class="container">
-            <h1>FAKTURA</h1>
 
-            <p>
-                <b>Numer faktury:</b> {d["numer"]}<br>
-                <b>Numer KSeF:</b> {d["ksef_number"]}
-            </p>
+            <div class="top">
+                <div>
+                    <b>Numer faktury:</b> {d["numer"]}<br>
+                    <b>KSeF:</b> {d["ksef_number"]}
+                </div>
 
-            <div class="dates">
-                Data wystawienia: {d["data_wystawienia"]}<br>
-                Data utworzenia: {d["data_utworzenia"]}<br>
-                Data zapłaty: {d["data_zaplaty"]}<br>
-                Data zamówienia: {d["data_zamowienia"]}<br>
-                Data KSeF: {d["data_ksef"]}
+                <div class="dates">
+                    <table>
+                        <tr>
+                            <td>Wystawienia:</td><td>{d["data_wystawienia"]}</td>
+                            <td>Zapłaty:</td><td>{d["data_zaplaty"]}</td>
+                        </tr>
+                        <tr>
+                            <td>Utworzenia:</td><td>{d["data_utworzenia"]}</td>
+                            <td>Zamówienia:</td><td>{d["data_zamowienia"]}</td>
+                        </tr>
+                        <tr>
+                            <td>KSeF:</td><td>{d["data_ksef"]}</td>
+                        </tr>
+                    </table>
+                </div>
             </div>
 
             <div class="row">
@@ -151,7 +199,7 @@ def html_invoice(d):
                 </div>
             </div>
 
-            <table>
+            <table class="main">
                 <tr>
                     <th>#</th>
                     <th>Nazwa</th>
@@ -171,6 +219,7 @@ def html_invoice(d):
                 VAT: {d["vat"]} zł<br>
                 Do zapłaty: {d["brutto"]} zł
             </div>
+
         </div>
     </body>
     </html>

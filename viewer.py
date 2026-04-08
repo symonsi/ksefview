@@ -5,10 +5,9 @@ import tempfile
 import webbrowser
 from tkinter import Tk, filedialog
 
-NS = {"fa": "http://crd.gov.pl/wzor/2023/06/29/12648/"}
+NS = {"fa": "http://crd.gov.pl/wzor/2025/06/25/13775/"}
 
 
-# bezpieczne pobieranie z namespace
 def get(el, path):
     if el is None:
         return ""
@@ -16,66 +15,47 @@ def get(el, path):
     return x.text.strip() if x is not None and x.text else ""
 
 
-# fallback bez namespace (ważne dla różnych XML)
-def get_any(root, tag):
-    for el in root.iter():
-        if el.tag.endswith(tag):
-            return el.text.strip() if el.text else ""
-    return ""
-
-
 def parse_invoice(root):
     data = {}
 
-    # podstawowe dane
-    data["numer"] = get(root, ".//fa:P_2") or get_any(root, "P_2")
-    data["data"] = get(root, ".//fa:P_1") or get_any(root, "P_1")
+    # dane podstawowe
+    data["numer"] = get(root, ".//fa:P_2")
+    data["data"] = get(root, ".//fa:P_1")
 
     # sprzedawca
     sprzedawca = root.find(".//fa:Podmiot1", NS)
-    if sprzedawca is None:
-        sprzedawca = root
-
     data["sprzedawca"] = {
-        "nazwa": get(sprzedawca, ".//fa:Nazwa") or get_any(root, "Nazwa"),
-        "nip": get(sprzedawca, ".//fa:NIP") or get_any(root, "NIP"),
-        "ulica": get(sprzedawca, ".//fa:Ulica"),
-        "miasto": get(sprzedawca, ".//fa:Miejscowosc"),
-        "kod": get(sprzedawca, ".//fa:KodPocztowy"),
+        "nazwa": get(sprzedawca, ".//fa:Nazwa"),
+        "nip": get(sprzedawca, ".//fa:NIP"),
+        "adres": get(sprzedawca, ".//fa:AdresL1"),
     }
 
     # nabywca
     nabywca = root.find(".//fa:Podmiot2", NS)
-    if nabywca is None:
-        nabywca = root
-
     data["nabywca"] = {
         "nazwa": get(nabywca, ".//fa:Nazwa"),
         "nip": get(nabywca, ".//fa:NIP"),
-        "ulica": get(nabywca, ".//fa:Ulica"),
-        "miasto": get(nabywca, ".//fa:Miejscowosc"),
-        "kod": get(nabywca, ".//fa:KodPocztowy"),
+        "adres": get(nabywca, ".//fa:AdresL1"),
     }
 
-    # pozycje faktury
+    # pozycje (KLUCZOWA ZMIANA)
     items = []
-    for poz in root.iter():
-        if poz.tag.endswith("FakturaWiersz"):
-            item = {
-                "nazwa": get(poz, ".//fa:P_7") or get_any(poz, "P_7"),
-                "ilosc": get(poz, ".//fa:P_8A") or get_any(poz, "P_8A"),
-                "cena": get(poz, ".//fa:P_9A") or get_any(poz, "P_9A"),
-                "netto": get(poz, ".//fa:P_11") or get_any(poz, "P_11"),
-                "vat": get(poz, ".//fa:P_12") or get_any(poz, "P_12"),
-            }
-            items.append(item)
+    for poz in root.findall(".//fa:FaWiersz", NS):
+        items.append({
+            "nazwa": get(poz, ".//fa:P_7"),
+            "ilosc": get(poz, ".//fa:P_8B"),
+            "jm": get(poz, ".//fa:P_8A"),
+            "cena": get(poz, ".//fa:P_9B"),
+            "netto": get(poz, ".//fa:P_11A"),
+            "vat": get(poz, ".//fa:P_11Vat"),
+        })
 
     data["items"] = items
 
     # podsumowanie
-    data["netto"] = get(root, ".//fa:P_13_1") or get_any(root, "P_13_1")
-    data["vat"] = get(root, ".//fa:P_14_1") or get_any(root, "P_14_1")
-    data["brutto"] = get(root, ".//fa:P_15") or get_any(root, "P_15")
+    data["netto"] = get(root, ".//fa:P_13_1")
+    data["vat"] = get(root, ".//fa:P_14_1")
+    data["brutto"] = get(root, ".//fa:P_15")
 
     return data
 
@@ -87,7 +67,7 @@ def html_invoice(d):
         <tr>
             <td>{i}</td>
             <td>{item['nazwa']}</td>
-            <td>{item['ilosc']}</td>
+            <td>{item['ilosc']} {item['jm']}</td>
             <td>{item['cena']}</td>
             <td>{item['netto']}</td>
             <td>{item['vat']}</td>
@@ -129,7 +109,7 @@ def html_invoice(d):
         }}
         th, td {{
             border: 1px solid #ccc;
-            padding: 8px;
+            padding: 6px;
             text-align: center;
         }}
         th {{
@@ -155,16 +135,14 @@ def html_invoice(d):
                     <b>Sprzedawca:</b><br>
                     {d["sprzedawca"]["nazwa"]}<br>
                     NIP: {d["sprzedawca"]["nip"]}<br>
-                    {d["sprzedawca"]["ulica"]}<br>
-                    {d["sprzedawca"]["kod"]} {d["sprzedawca"]["miasto"]}
+                    {d["sprzedawca"]["adres"]}
                 </div>
 
                 <div class="box">
                     <b>Nabywca:</b><br>
                     {d["nabywca"]["nazwa"]}<br>
                     NIP: {d["nabywca"]["nip"]}<br>
-                    {d["nabywca"]["ulica"]}<br>
-                    {d["nabywca"]["kod"]} {d["nabywca"]["miasto"]}
+                    {d["nabywca"]["adres"]}
                 </div>
             </div>
 
@@ -192,11 +170,6 @@ def html_invoice(d):
 
 
 def show(xml_path):
-    if not os.path.exists(xml_path):
-        print("Plik nie istnieje:", xml_path)
-        input("Enter...")
-        return
-
     tree = etree.parse(xml_path)
     root = tree.getroot()
 
@@ -211,16 +184,10 @@ def show(xml_path):
 
 
 if __name__ == "__main__":
-    try:
-        if len(sys.argv) > 1:
-            show(sys.argv[1])
-        else:
-            Tk().withdraw()
-            file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
-            if file_path:
-                show(file_path)
-    except Exception as e:
-        import traceback
-        print("BŁĄD:", e)
-        traceback.print_exc()
-        input("Naciśnij Enter żeby zamknąć...")
+    if len(sys.argv) > 1:
+        show(sys.argv[1])
+    else:
+        Tk().withdraw()
+        file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
+        if file_path:
+            show(file_path)

@@ -21,6 +21,25 @@ def format_date(dt):
     return dt.split("T")[0]
 
 
+def format_number(n):
+    try:
+        n = float(n)
+    except:
+        return ""
+
+    if n.is_integer():
+        return str(int(n))
+    else:
+        return str(n).replace(".", ",")
+
+
+def format_money(n):
+    try:
+        return f"{float(n):.2f}".replace(".", ",")
+    except:
+        return ""
+
+
 def parse_invoice(root):
     data = {}
 
@@ -55,14 +74,17 @@ def parse_invoice(root):
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
 
-        ilosc = float(get(poz, ".//fa:P_8B") or 0)
-        cena = float(get(poz, ".//fa:P_9B") or 0)
-        netto = float(get(poz, ".//fa:P_11A") or 0)
-        vat_kwota = float(get(poz, ".//fa:P_11Vat") or 0)
+        ilosc = get(poz, ".//fa:P_8B")
+        cena = get(poz, ".//fa:P_9B")
+        netto = get(poz, ".//fa:P_11A")
+        vat_kwota = get(poz, ".//fa:P_11Vat")
+        vat_proc = get(poz, ".//fa:P_12")
+        rabat = get(poz, ".//fa:P_10")
 
-        wartosc = ilosc * cena
-        rabat = wartosc - netto
-        brutto = netto + vat_kwota
+        try:
+            brutto = float(netto) + float(vat_kwota)
+        except:
+            brutto = 0
 
         items.append({
             "nazwa": get(poz, ".//fa:P_7"),
@@ -71,9 +93,9 @@ def parse_invoice(root):
             "cena": cena,
             "netto": netto,
             "vat_kwota": vat_kwota,
-            "vat_proc": get(poz, ".//fa:P_12"),
-            "rabat": round(rabat, 2),
-            "brutto": round(brutto, 2),
+            "vat_proc": vat_proc,
+            "rabat": rabat,
+            "brutto": brutto,
         })
 
     data["items"] = items
@@ -93,13 +115,13 @@ def html_invoice(d):
         <tr>
             <td>{i}</td>
             <td style="text-align:left">{item['nazwa']}</td>
-            <td>{item['ilosc']} {item['jm']}</td>
-            <td class="num">{item['cena']:.2f}</td>
-            <td class="num">{item['rabat']:.2f}</td>
-            <td class="num">{item['netto']:.2f}</td>
-            <td>{item['vat_proc']}%</td>
-            <td class="num">{item['vat_kwota']:.2f}</td>
-            <td class="num"><b>{item['brutto']:.2f}</b></td>
+            <td>{format_number(item['ilosc'])} {item['jm']}</td>
+            <td class="num">{format_money(item['cena'])}</td>
+            <td class="num">{format_money(item['rabat'])}</td>
+            <td class="num">{format_money(item['netto'])}</td>
+            <td>{item['vat_proc']}</td>
+            <td class="num">{format_money(item['vat_kwota'])}</td>
+            <td class="num"><b>{format_money(item['brutto'])}</b></td>
         </tr>
         """
 
@@ -207,7 +229,7 @@ def html_invoice(d):
                     <th>Cena</th>
                     <th>Rabat</th>
                     <th>Netto</th>
-                    <th>VAT %</th>
+                    <th>%</th>
                     <th>VAT</th>
                     <th>Brutto</th>
                 </tr>
@@ -215,9 +237,9 @@ def html_invoice(d):
             </table>
 
             <div class="total">
-                Netto: {d["netto"]} zł<br>
-                VAT: {d["vat"]} zł<br>
-                Do zapłaty: {d["brutto"]} zł
+                Netto: {format_money(d["netto"])} zł<br>
+                VAT: {format_money(d["vat"])} zł<br>
+                Do zapłaty: {format_money(d["brutto"])} zł
             </div>
 
         </div>

@@ -1,0 +1,27 @@
+name: Build EXE
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install deps
+      run: pip install pyinstaller lxml
+
+    - name: Build EXE
+      run: pyinstaller --onefile viewer.py
+
+    - name: Upload EXE
+      uses: actions/upload-artifact@v3
+      with:
+        name: viewer-exe
+        path: dist/viewer.exe

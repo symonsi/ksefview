@@ -1,30 +1,68 @@
-name: Build EXE
+import sys
+from lxml import etree
+import tempfile
+import webbrowser
 
-on: [push]
- 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+NS = {"fa": "http://crd.gov.pl/wzor/2023/06/29/12648/"}
 
-jobs:
-  build:
-    runs-on: windows-latest
+def get(el, path):
+    x = el.find(path, NS)
+    return x.text if x is not None else ""
 
-    steps:
-    - uses: actions/checkout@v4
+def get_all(el, path):
+    return el.findall(path, NS)
 
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+def parse_invoice(root):
+    data = {}
 
-    - name: Install dependencies
-      run: pip install pyinstaller lxml
+    data["numer"] = get(root, ".//fa:P_2")
+    data["data"] = get(root, ".//fa:P_1")
 
-    - name: Build EXE
-      run: pyinstaller --onefile viewer.py
+    data["sprzedawca"] = {
+        "nazwa": get(root, ".//fa:P_3A"),
+        "nip": get(root, ".//fa:P_5A"),
+    }
 
-    - name: Upload EXE
-      uses: actions/upload-artifact@v4
-      with:
-        name: viewer-exe
-        path: dist/viewer.exe
+    data["nabywca"] = {
+        "nazwa": get(root, ".//fa:P_3B"),
+        "nip": get(root, ".//fa:P_5B"),
+    }
+
+    items = []
+    for poz in get_all(root, ".//fa:FakturaWiersz"):
+        items.append({
+            "nazwa": get(poz, ".//fa:P_7"),
+            "ilosc": get(poz, ".//fa:P_8A"),
+            "cena": get(poz, ".//fa:P_9A"),
+            "netto": get(poz, ".//fa:P_11"),
+            "vat": get(poz, ".//fa:P_12"),
+        })
+
+    data["items"] = items
+    data["brutto"] = get(root, ".//fa:P_15")
+
+    return data
+
+def show(xml_path):
+    tree = etree.parse(xml_path)
+    root = tree.getroot()
+
+    data = parse_invoice(root)
+
+    html = "<html><body><h1>Faktura</h1>"
+    html += f"Numer: {data['numer']}<br>"
+
+    for i in data["items"]:
+        html += f"{i['nazwa']} - {i['netto']}<br>"
+
+    html += "</body></html>"
+
+    f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
+    f.write(html.encode("utf-8"))
+    f.close()
+
+    webbrowser.open(f.name)
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        show(sys.argv[1])

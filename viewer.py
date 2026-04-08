@@ -18,11 +18,9 @@ def get(el, path):
 def parse_invoice(root):
     data = {}
 
-    # dane podstawowe
     data["numer"] = get(root, ".//fa:P_2")
     data["data"] = get(root, ".//fa:P_1")
 
-    # sprzedawca
     sprzedawca = root.find(".//fa:Podmiot1", NS)
     data["sprzedawca"] = {
         "nazwa": get(sprzedawca, ".//fa:Nazwa"),
@@ -30,7 +28,6 @@ def parse_invoice(root):
         "adres": get(sprzedawca, ".//fa:AdresL1"),
     }
 
-    # nabywca
     nabywca = root.find(".//fa:Podmiot2", NS)
     data["nabywca"] = {
         "nazwa": get(nabywca, ".//fa:Nazwa"),
@@ -38,21 +35,29 @@ def parse_invoice(root):
         "adres": get(nabywca, ".//fa:AdresL1"),
     }
 
-    # pozycje (KLUCZOWA ZMIANA)
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
+
+        ilosc = float(get(poz, ".//fa:P_8B") or 0)
+        cena = float(get(poz, ".//fa:P_9B") or 0)
+        netto = float(get(poz, ".//fa:P_11A") or 0)
+
+        wartosc_teoretyczna = ilosc * cena
+        rabat = wartosc_teoretyczna - netto
+
         items.append({
             "nazwa": get(poz, ".//fa:P_7"),
-            "ilosc": get(poz, ".//fa:P_8B"),
+            "ilosc": ilosc,
             "jm": get(poz, ".//fa:P_8A"),
-            "cena": get(poz, ".//fa:P_9B"),
-            "netto": get(poz, ".//fa:P_11A"),
-            "vat": get(poz, ".//fa:P_11Vat"),
+            "cena": cena,
+            "netto": netto,
+            "vat_kwota": float(get(poz, ".//fa:P_11Vat") or 0),
+            "vat_proc": get(poz, ".//fa:P_12"),
+            "rabat": round(rabat, 2),
         })
 
     data["items"] = items
 
-    # podsumowanie
     data["netto"] = get(root, ".//fa:P_13_1")
     data["vat"] = get(root, ".//fa:P_14_1")
     data["brutto"] = get(root, ".//fa:P_15")
@@ -66,11 +71,13 @@ def html_invoice(d):
         rows += f"""
         <tr>
             <td>{i}</td>
-            <td>{item['nazwa']}</td>
+            <td style="text-align:left">{item['nazwa']}</td>
             <td>{item['ilosc']} {item['jm']}</td>
-            <td>{item['cena']}</td>
-            <td>{item['netto']}</td>
-            <td>{item['vat']}</td>
+            <td>{item['cena']:.2f}</td>
+            <td>{item['rabat']:.2f}</td>
+            <td>{item['netto']:.2f}</td>
+            <td>{item['vat_proc']}%</td>
+            <td>{item['vat_kwota']:.2f}</td>
         </tr>
         """
 
@@ -79,48 +86,18 @@ def html_invoice(d):
     <head>
     <meta charset="utf-8">
     <style>
-        body {{
-            font-family: Arial;
-            background: #eee;
-            padding: 20px;
-        }}
+        body {{ font-family: Arial; background:#eee; padding:20px; }}
         .container {{
-            background: white;
-            padding: 30px;
-            max-width: 900px;
-            margin: auto;
-            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            background:white; padding:30px; max-width:1000px;
+            margin:auto; box-shadow:0 0 10px rgba(0,0,0,0.2);
         }}
-        h1 {{
-            text-align: center;
-        }}
-        .row {{
-            display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
-        }}
-        .box {{
-            width: 48%;
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }}
-        th, td {{
-            border: 1px solid #ccc;
-            padding: 6px;
-            text-align: center;
-        }}
-        th {{
-            background: #f0f0f0;
-        }}
-        .total {{
-            text-align: right;
-            margin-top: 20px;
-            font-size: 18px;
-            font-weight: bold;
-        }}
+        h1 {{ text-align:center; }}
+        .row {{ display:flex; justify-content:space-between; margin-top:20px; }}
+        .box {{ width:48%; }}
+        table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
+        th, td {{ border:1px solid #ccc; padding:6px; text-align:center; }}
+        th {{ background:#f0f0f0; }}
+        .total {{ text-align:right; margin-top:20px; font-size:18px; font-weight:bold; }}
     </style>
     </head>
 
@@ -152,7 +129,9 @@ def html_invoice(d):
                     <th>Nazwa</th>
                     <th>Ilość</th>
                     <th>Cena</th>
+                    <th>Rabat</th>
                     <th>Netto</th>
+                    <th>VAT %</th>
                     <th>VAT</th>
                 </tr>
                 {rows}

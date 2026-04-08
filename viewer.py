@@ -47,6 +47,9 @@ def parse_invoice(root):
     data["numer"] = get(root, ".//fa:P_2")
     data["ksef_number"] = get(root, ".//fa:KSeFNumber")
 
+    # TYP FAKTURY
+    data["rodzaj"] = get(root, ".//fa:RodzajFaktury")
+
     # DATY
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_utworzenia"] = format_date(get(root, ".//fa:DataWytworzeniaFa"))
@@ -70,26 +73,33 @@ def parse_invoice(root):
         "adres": get(nabywca, ".//fa:AdresL1"),
     }
 
-    # Pozycje
+    # POZYCJE (ODPORNE)
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
 
         ilosc = get(poz, ".//fa:P_8B")
-        cena = get(poz, ".//fa:P_9B")
-        netto = get(poz, ".//fa:P_11A")
-        vat_kwota = get(poz, ".//fa:P_11Vat")
+        cena = get(poz, ".//fa:P_9A") or get(poz, ".//fa:P_9B")
+        netto = get(poz, ".//fa:P_11") or get(poz, ".//fa:P_11A")
         vat_proc = get(poz, ".//fa:P_12")
-        rabat = get(poz, ".//fa:P_10")
 
+        # VAT fallback
         try:
-            brutto = float(netto) + float(vat_kwota)
+            netto_f = float(netto)
+            vat_proc_f = float(vat_proc)
+            vat_kwota = netto_f * vat_proc_f / 100
+            brutto = netto_f + vat_kwota
         except:
+            vat_kwota = 0
             brutto = 0
+
+        # rabat (jeśli istnieje)
+        rabat = get(poz, ".//fa:P_10")
+        if not rabat:
+            rabat = "0"
 
         items.append({
             "nazwa": get(poz, ".//fa:P_7"),
             "ilosc": ilosc,
-            "jm": get(poz, ".//fa:P_8A"),
             "cena": cena,
             "netto": netto,
             "vat_kwota": vat_kwota,
@@ -100,7 +110,7 @@ def parse_invoice(root):
 
     data["items"] = items
 
-    # Podsumowanie
+    # PODSUMOWANIE (z XML – najważniejsze)
     data["netto"] = get(root, ".//fa:P_13_1")
     data["vat"] = get(root, ".//fa:P_14_1")
     data["brutto"] = get(root, ".//fa:P_15")
@@ -115,7 +125,7 @@ def html_invoice(d):
         <tr>
             <td>{i}</td>
             <td style="text-align:left">{item['nazwa']}</td>
-            <td>{format_number(item['ilosc'])} {item['jm']}</td>
+            <td>{format_number(item['ilosc'])}</td>
             <td class="num">{format_money(item['cena'])}</td>
             <td class="num">{format_money(item['rabat'])}</td>
             <td class="num">{format_money(item['netto'])}</td>
@@ -124,6 +134,9 @@ def html_invoice(d):
             <td class="num"><b>{format_money(item['brutto'])}</b></td>
         </tr>
         """
+
+    # oznaczenie korekty
+    typ = "KOREKTA" if d["rodzaj"] == "KOR" else ""
 
     return f"""
     <html>
@@ -142,13 +155,8 @@ def html_invoice(d):
             margin-bottom:10px;
         }}
 
-        .dates table {{
-            font-size:13px;
-        }}
-
-        .dates td {{
-            padding:2px 8px;
-        }}
+        .dates table {{ font-size:13px; }}
+        .dates td {{ padding:2px 8px; }}
 
         .row {{ display:flex; justify-content:space-between; margin-top:15px; }}
         .box {{ width:48%; }}
@@ -165,15 +173,17 @@ def html_invoice(d):
         }}
 
         th {{ background:#f0f0f0; }}
-
-        .num {{
-            text-align:right;
-        }}
+        .num {{ text-align:right; }}
 
         .total {{
             text-align:right;
             margin-top:20px;
             font-size:18px;
+            font-weight:bold;
+        }}
+
+        .kor {{
+            color:red;
             font-weight:bold;
         }}
     </style>
@@ -184,8 +194,9 @@ def html_invoice(d):
 
             <div class="top">
                 <div>
-                    <b>Numer faktury:</b> {d["numer"]}<br>
-                    <b>KSeF:</b> {d["ksef_number"]}
+                    <b>Numer:</b> {d["numer"]}<br>
+                    <b>KSeF:</b> {d["ksef_number"]}<br>
+                    <span class="kor">{typ}</span>
                 </div>
 
                 <div class="dates">

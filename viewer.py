@@ -21,6 +21,7 @@ def parse_invoice(root):
     data["numer"] = get(root, ".//fa:P_2")
     data["data"] = get(root, ".//fa:P_1")
 
+    # Sprzedawca
     sprzedawca = root.find(".//fa:Podmiot1", NS)
     data["sprzedawca"] = {
         "nazwa": get(sprzedawca, ".//fa:Nazwa"),
@@ -28,6 +29,7 @@ def parse_invoice(root):
         "adres": get(sprzedawca, ".//fa:AdresL1"),
     }
 
+    # Nabywca
     nabywca = root.find(".//fa:Podmiot2", NS)
     data["nabywca"] = {
         "nazwa": get(nabywca, ".//fa:Nazwa"),
@@ -35,15 +37,18 @@ def parse_invoice(root):
         "adres": get(nabywca, ".//fa:AdresL1"),
     }
 
+    # Pozycje
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
 
         ilosc = float(get(poz, ".//fa:P_8B") or 0)
         cena = float(get(poz, ".//fa:P_9B") or 0)
         netto = float(get(poz, ".//fa:P_11A") or 0)
+        vat_kwota = float(get(poz, ".//fa:P_11Vat") or 0)
 
         wartosc_teoretyczna = ilosc * cena
         rabat = wartosc_teoretyczna - netto
+        brutto = netto + vat_kwota
 
         items.append({
             "nazwa": get(poz, ".//fa:P_7"),
@@ -51,9 +56,10 @@ def parse_invoice(root):
             "jm": get(poz, ".//fa:P_8A"),
             "cena": cena,
             "netto": netto,
-            "vat_kwota": float(get(poz, ".//fa:P_11Vat") or 0),
+            "vat_kwota": vat_kwota,
             "vat_proc": get(poz, ".//fa:P_12"),
             "rabat": round(rabat, 2),
+            "brutto": round(brutto, 2),
         })
 
     data["items"] = items
@@ -78,6 +84,7 @@ def html_invoice(d):
             <td>{item['netto']:.2f}</td>
             <td>{item['vat_proc']}%</td>
             <td>{item['vat_kwota']:.2f}</td>
+            <td><b>{item['brutto']:.2f}</b></td>
         </tr>
         """
 
@@ -88,7 +95,7 @@ def html_invoice(d):
     <style>
         body {{ font-family: Arial; background:#eee; padding:20px; }}
         .container {{
-            background:white; padding:30px; max-width:1000px;
+            background:white; padding:30px; max-width:1100px;
             margin:auto; box-shadow:0 0 10px rgba(0,0,0,0.2);
         }}
         h1 {{ text-align:center; }}
@@ -133,6 +140,7 @@ def html_invoice(d):
                     <th>Netto</th>
                     <th>VAT %</th>
                     <th>VAT</th>
+                    <th>Brutto</th>
                 </tr>
                 {rows}
             </table>
@@ -149,6 +157,11 @@ def html_invoice(d):
 
 
 def show(xml_path):
+    if not os.path.exists(xml_path):
+        print("Plik nie istnieje:", xml_path)
+        input("Enter...")
+        return
+
     tree = etree.parse(xml_path)
     root = tree.getroot()
 

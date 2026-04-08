@@ -1,7 +1,7 @@
 name: Build EXE
 
 on: [push]
-
+ 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 

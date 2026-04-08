@@ -18,8 +18,16 @@ def get(el, path):
 def parse_invoice(root):
     data = {}
 
+    # NUMERY
     data["numer"] = get(root, ".//fa:P_2")
-    data["data"] = get(root, ".//fa:P_1")
+    data["ksef_number"] = get(root, ".//fa:KSeFNumber")
+
+    # DATY
+    data["data_wystawienia"] = get(root, ".//fa:P_1")
+    data["data_utworzenia"] = get(root, ".//fa:DataWytworzeniaFa")
+    data["data_zaplaty"] = get(root, ".//fa:DataZaplaty")
+    data["data_zamowienia"] = get(root, ".//fa:DataZamowienia")
+    data["data_ksef"] = get(root, ".//fa:KSeFDate")
 
     # Sprzedawca
     sprzedawca = root.find(".//fa:Podmiot1", NS)
@@ -46,8 +54,8 @@ def parse_invoice(root):
         netto = float(get(poz, ".//fa:P_11A") or 0)
         vat_kwota = float(get(poz, ".//fa:P_11Vat") or 0)
 
-        wartosc_teoretyczna = ilosc * cena
-        rabat = wartosc_teoretyczna - netto
+        wartosc = ilosc * cena
+        rabat = wartosc - netto
         brutto = netto + vat_kwota
 
         items.append({
@@ -64,6 +72,7 @@ def parse_invoice(root):
 
     data["items"] = items
 
+    # Podsumowanie
     data["netto"] = get(root, ".//fa:P_13_1")
     data["vat"] = get(root, ".//fa:P_14_1")
     data["brutto"] = get(root, ".//fa:P_15")
@@ -99,12 +108,13 @@ def html_invoice(d):
             margin:auto; box-shadow:0 0 10px rgba(0,0,0,0.2);
         }}
         h1 {{ text-align:center; }}
-        .row {{ display:flex; justify-content:space-between; margin-top:20px; }}
+        .row {{ display:flex; justify-content:space-between; margin-top:10px; }}
         .box {{ width:48%; }}
         table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
         th, td {{ border:1px solid #ccc; padding:6px; text-align:center; }}
         th {{ background:#f0f0f0; }}
         .total {{ text-align:right; margin-top:20px; font-size:18px; font-weight:bold; }}
+        .dates {{ margin-top:10px; font-size:14px; }}
     </style>
     </head>
 
@@ -112,7 +122,18 @@ def html_invoice(d):
         <div class="container">
             <h1>FAKTURA</h1>
 
-            <p><b>Numer:</b> {d["numer"]} | <b>Data:</b> {d["data"]}</p>
+            <p>
+                <b>Numer faktury:</b> {d["numer"]}<br>
+                <b>Numer KSeF:</b> {d["ksef_number"]}
+            </p>
+
+            <div class="dates">
+                Data wystawienia: {d["data_wystawienia"]}<br>
+                Data utworzenia: {d["data_utworzenia"]}<br>
+                Data zapłaty: {d["data_zaplaty"]}<br>
+                Data zamówienia: {d["data_zamowienia"]}<br>
+                Data KSeF: {d["data_ksef"]}
+            </div>
 
             <div class="row">
                 <div class="box">

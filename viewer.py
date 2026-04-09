@@ -23,20 +23,15 @@ def get_any(root, tag):
 
 
 def format_date(dt):
-    if not dt:
-        return ""
-    return dt.split("T")[0]
+    return dt.split("T")[0] if dt else ""
 
 
 def format_number(n):
     try:
         n = float(n)
+        return str(int(n)) if n.is_integer() else str(n).replace(".", ",")
     except:
         return ""
-    if n.is_integer():
-        return str(int(n))
-    else:
-        return str(n).replace(".", ",")
 
 
 def format_money(n):
@@ -44,6 +39,15 @@ def format_money(n):
         return f"{float(n):.2f}".replace(".", ",")
     except:
         return ""
+
+
+def forma_platnosci_txt(v):
+    return {
+        "1": "gotówka",
+        "2": "przelew",
+        "3": "karta",
+        "6": "przelew"
+    }.get(v, v)
 
 
 def parse_invoice(root):
@@ -59,10 +63,9 @@ def parse_invoice(root):
         or get_any(root, "NumerKSeF")
     )
 
-    # TYP
     data["rodzaj"] = get(root, ".//fa:RodzajFaktury")
 
-    # DATY (pełne)
+    # DATY
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))
     data["data_utworzenia"] = format_date(get(root, ".//fa:DataWytworzeniaFa"))
@@ -72,11 +75,11 @@ def parse_invoice(root):
     data["termin_platnosci"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
     data["data_zamowienia"] = format_date(get(root, ".//fa:DataZamowienia"))
 
-    # 🆕 KONTO
+    # KONTO
     data["konto"] = get(root, ".//fa:RachunekBankowy/fa:NrRB")
     data["bank"] = get(root, ".//fa:RachunekBankowy/fa:NazwaBanku")
 
-    # 🆕 OPISY
+    # OPISY
     opisy = []
     for o in root.findall(".//fa:DodatkowyOpis", NS):
         k = get(o, ".//fa:Klucz")
@@ -85,16 +88,24 @@ def parse_invoice(root):
             opisy.append(f"{k}: {w}")
     data["opisy"] = opisy
 
-    # Sprzedawca
+    # PŁATNOŚĆ
+    data["zaplacono"] = get(root, ".//fa:Zaplacono")
+    data["data_zaplaty_real"] = format_date(get(root, ".//fa:DataZaplaty"))
+    data["forma_platnosci"] = get(root, ".//fa:FormaPlatnosci")
+
+    # STOPKA
+    data["stopka"] = get(root, ".//fa:StopkaFaktury")
+
+    # PODMIOTY
     sprzedawca = root.find(".//fa:Podmiot1", NS)
+    nabywca = root.find(".//fa:Podmiot2", NS)
+
     data["sprzedawca"] = {
         "nazwa": get(sprzedawca, ".//fa:Nazwa"),
         "nip": get(sprzedawca, ".//fa:NIP"),
         "adres": get(sprzedawca, ".//fa:AdresL1"),
     }
 
-    # Nabywca
-    nabywca = root.find(".//fa:Podmiot2", NS)
     data["nabywca"] = {
         "nazwa": get(nabywca, ".//fa:Nazwa"),
         "nip": get(nabywca, ".//fa:NIP"),
@@ -160,8 +171,6 @@ def html_invoice(d):
         """
 
     typ = "KOREKTA" if d["rodzaj"] == "KOR" else ""
-
-    # 🆕 OPIS HTML
     opis_html = "<br>".join(d["opisy"])
 
     return f"""
@@ -209,7 +218,6 @@ def html_invoice(d):
         }}
 
         .kor {{ color:red; font-weight:bold; }}
-
         .extra {{ margin-top:20px; font-size:14px; }}
     </style>
     </head>
@@ -220,7 +228,7 @@ def html_invoice(d):
             <div class="top">
                 <div>
                     <b>Numer:</b> {d["numer"]}<br>
-                    <b>KSeF:</b> {d["ksef_number"]}<br>
+                    <b>KSeF:</b> {d["ksef_number"] if d["ksef_number"] else "BRAK"}<br>
                     <span class="kor">{typ}</span>
                 </div>
 
@@ -284,8 +292,16 @@ def html_invoice(d):
 
             <div class="extra">
                 <b>Konto:</b> {d["konto"]} {d["bank"]}<br><br>
+
+                <b>Płatność:</b><br>
+                Status: {"Zapłacona" if d["zaplacono"] == "1" else "Nie zapłacona"}<br>
+                Data zapłaty: {d["data_zaplaty_real"]}<br>
+                Forma: {forma_platnosci_txt(d["forma_platnosci"])}<br><br>
+
                 <b>Opis:</b><br>
-                {opis_html}
+                {opis_html}<br><br>
+
+                {"<b>Uwagi:</b><br>" + d["stopka"] if d["stopka"] else ""}
             </div>
 
         </div>
@@ -313,6 +329,6 @@ if __name__ == "__main__":
         show(sys.argv[1])
     else:
         Tk().withdraw()
-        file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
-        if file_path:
-            show(file_path)
+        path = filedialog.askopenfilename(filetypes=[("XML", "*.xml")])
+        if path:
+            show(path)

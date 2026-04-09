@@ -46,7 +46,6 @@ def forma_platnosci_txt(v):
 def parse_invoice(root):
     data = {}
 
-    # NUMERY
     data["numer"] = get(root, ".//fa:P_2")
     data["ksef_number"] = get(root, ".//fa:KSeFNumber") or get(root, ".//fa:NumerKSeF")
 
@@ -57,7 +56,6 @@ def parse_invoice(root):
     data["data_ksef"] = format_date(get(root, ".//fa:KSeFDate"))
     data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
     data["termin_platnosci"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
-    data["data_zamowienia"] = format_date(get(root, ".//fa:DataZamowienia"))
 
     # OKRES
     data["okres_od"] = format_date(get(root, ".//fa:P_6_Od"))
@@ -84,7 +82,7 @@ def parse_invoice(root):
     # STOPKA
     data["stopka"] = get(root, ".//fa:StopkaFaktury")
 
-    # PODMIOTY
+    # KONTRAHENCI
     sprzedawca = root.find(".//fa:Podmiot1", NS)
     nabywca = root.find(".//fa:Podmiot2", NS)
 
@@ -104,7 +102,7 @@ def parse_invoice(root):
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
 
-        netto = get(poz, "fa:P_11") or get(poz, "fa:P_11A")
+        netto = get(poz, "fa:P_11")
         vat_proc = get(poz, "fa:P_12")
 
         try:
@@ -119,7 +117,7 @@ def parse_invoice(root):
         items.append({
             "nazwa": get(poz, "fa:P_7"),
             "ilosc": get(poz, "fa:P_8B"),
-            "cena": get(poz, "fa:P_9A") or get(poz, "fa:P_9B"),
+            "cena": get(poz, "fa:P_9A"),
             "netto": netto,
             "vat_kwota": vat_kwota,
             "vat_proc": vat_proc,
@@ -129,7 +127,7 @@ def parse_invoice(root):
 
     data["items"] = items
 
-    # SUMY (POPRAWKA NA WIELE STAWEK VAT)
+    # SUMY
     total_netto = 0
     total_vat = 0
 
@@ -191,11 +189,13 @@ def html_invoice(d):
         table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
         th, td {{ border:1px solid #ccc; padding:6px; }}
         th {{ background:#f0f0f0; }}
+        .row {{ display:flex; justify-content:space-between; margin-top:15px; }}
+        .box {{ width:48%; }}
         .extra {{ margin-top:20px; }}
     </style>
     </head>
-    <body>
 
+    <body>
     <div class="container">
 
     <b>Numer:</b> {d["numer"]}<br>
@@ -216,6 +216,22 @@ def html_invoice(d):
         </tr>
         {okres_html}
     </table>
+
+    <div class="row">
+        <div class="box">
+            <b>Sprzedawca:</b><br>
+            {d["sprzedawca"]["nazwa"]}<br>
+            NIP: {d["sprzedawca"]["nip"]}<br>
+            {d["sprzedawca"]["adres"]}
+        </div>
+
+        <div class="box">
+            <b>Nabywca:</b><br>
+            {d["nabywca"]["nazwa"]}<br>
+            NIP: {d["nabywca"]["nip"]}<br>
+            {d["nabywca"]["adres"]}
+        </div>
+    </div>
 
     <table>
         <tr>
@@ -246,48 +262,3 @@ def html_invoice(d):
     </body>
     </html>
     """
-
-
-def show(xml_path):
-    try:
-        if not os.path.exists(xml_path):
-            print("Plik nie istnieje:", xml_path)
-            input("Enter...")
-            return
-
-        tree = etree.parse(xml_path)
-        root = tree.getroot()
-
-        data = parse_invoice(root)
-        html = html_invoice(data)
-
-        f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
-        f.write(html.encode("utf-8"))
-        f.close()
-
-        print("Plik wygenerowany:", f.name)
-
-        webbrowser.open(f.name)
-
-        input("Naciśnij Enter aby zamknąć...")
-
-    except Exception as e:
-        print("BŁĄD:", e)
-        input("Enter...")
-
-
-if __name__ == "__main__":
-    try:
-        if len(sys.argv) > 1:
-            show(sys.argv[1])
-        else:
-            Tk().withdraw()
-            file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
-            if file_path:
-                show(file_path)
-            else:
-                print("Nie wybrano pliku")
-                input("Enter...")
-    except Exception as e:
-        print("Błąd główny:", e)
-        input("Enter...")

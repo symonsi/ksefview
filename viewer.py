@@ -140,6 +140,8 @@ def html_invoice(d):
         </tr>
         """
 
+    opis_html = "<br>".join(d["opisy"])
+
     return f"""
     <html>
     <head>
@@ -161,8 +163,8 @@ def html_invoice(d):
 
         .summary {{ width:300px; margin-left:auto; margin-top:20px; }}
         .summary td {{ border:none; padding:4px; }}
-        .summary .label {{ text-align:left; }}
-        .summary .value {{ text-align:right; }}
+
+        .extra {{ margin-top:30px; }}
     </style>
     </head>
     <body>
@@ -178,7 +180,6 @@ def html_invoice(d):
         <table class="dates">
             <tr><td>Wystawienia:</td><td>{d["data_wystawienia"]}</td></tr>
             <tr><td>Sprzedaży:</td><td>{d["data_sprzedazy"]}</td></tr>
-            <tr><td>Utworzenia:</td><td>{d["data_utworzenia"]}</td></tr>
             <tr><td>KSeF:</td><td>{d["data_ksef"]}</td></tr>
             <tr><td>Termin:</td><td>{d["termin_platnosci"]}</td></tr>
         </table>
@@ -208,10 +209,24 @@ def html_invoice(d):
     </table>
 
     <table class="summary">
-        <tr><td class="label">Netto:</td><td class="value">{format_money(d["netto"])}</td></tr>
-        <tr><td class="label">VAT:</td><td class="value">{format_money(d["vat"])}</td></tr>
-        <tr><td class="label"><b>Brutto:</b></td><td class="value"><b>{format_money(d["brutto"])}</b></td></tr>
+        <tr><td>Netto:</td><td class="num">{format_money(d["netto"])}</td></tr>
+        <tr><td>VAT:</td><td class="num">{format_money(d["vat"])}</td></tr>
+        <tr><td><b>Brutto:</b></td><td class="num"><b>{format_money(d["brutto"])}</b></td></tr>
     </table>
+
+    <div class="extra">
+        <b>Konto:</b> {d["konto"]} ({d["bank"]})<br><br>
+
+        <b>Płatność:</b><br>
+        Status: {"Zapłacona" if d["zaplacono"] == "1" else "Nie zapłacona"}<br>
+        Data: {d["data_zaplaty_real"]}<br>
+        Forma: {forma_platnosci_txt(d["forma_platnosci"])}<br><br>
+
+        <b>Opis:</b><br>
+        {opis_html}<br><br>
+
+        {"<b>Uwagi:</b><br>" + d["stopka"] if d["stopka"] else ""}
+    </div>
 
     </div>
     </body>

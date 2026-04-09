@@ -46,11 +46,9 @@ def forma_platnosci_txt(v):
 def parse_invoice(root):
     data = {}
 
-    # NUMERY
     data["numer"] = get(root, ".//fa:P_2")
-    data["ksef_number"] = get(root, ".//fa:KSeFNumber") or get(root, ".//fa:NumerKSeF")
+    data["ksef_number"] = get(root, ".//fa:KSeFNumber")
 
-    # DATY
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))
     data["data_utworzenia"] = format_date(get(root, ".//fa:DataWytworzeniaFa"))
@@ -58,15 +56,12 @@ def parse_invoice(root):
     data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
     data["termin_platnosci"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
 
-    # OKRES
     data["okres_od"] = format_date(get(root, ".//fa:P_6_Od"))
     data["okres_do"] = format_date(get(root, ".//fa:P_6_Do"))
 
-    # KONTO
     data["konto"] = get(root, ".//fa:RachunekBankowy/fa:NrRB")
     data["bank"] = get(root, ".//fa:RachunekBankowy/fa:NazwaBanku")
 
-    # OPISY
     opisy = []
     for o in root.findall(".//fa:DodatkowyOpis", NS):
         k = get(o, "fa:Klucz")
@@ -75,15 +70,12 @@ def parse_invoice(root):
             opisy.append(f"{k}: {w}")
     data["opisy"] = opisy
 
-    # PŁATNOŚĆ
     data["zaplacono"] = get(root, ".//fa:Zaplacono")
     data["data_zaplaty_real"] = format_date(get(root, ".//fa:DataZaplaty"))
     data["forma_platnosci"] = get(root, ".//fa:FormaPlatnosci")
 
-    # STOPKA
     data["stopka"] = get(root, ".//fa:StopkaFaktury")
 
-    # PODMIOTY
     sprzedawca = root.find(".//fa:Podmiot1", NS)
     nabywca = root.find(".//fa:Podmiot2", NS)
 
@@ -99,11 +91,9 @@ def parse_invoice(root):
         "adres": get(nabywca, ".//fa:AdresL1"),
     }
 
-    # POZYCJE
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
-
-        netto = get(poz, "fa:P_11") or get(poz, "fa:P_11A")
+        netto = get(poz, "fa:P_11")
         vat_proc = get(poz, "fa:P_12")
 
         try:
@@ -118,7 +108,7 @@ def parse_invoice(root):
         items.append({
             "nazwa": get(poz, "fa:P_7"),
             "ilosc": get(poz, "fa:P_8B"),
-            "cena": get(poz, "fa:P_9A") or get(poz, "fa:P_9B"),
+            "cena": get(poz, "fa:P_9A"),
             "netto": netto,
             "vat_kwota": vat_kwota,
             "vat_proc": vat_proc,
@@ -127,19 +117,8 @@ def parse_invoice(root):
 
     data["items"] = items
 
-    # PODSUMOWANIE (różne stawki VAT)
-    data["netto"] = (
-        get(root, ".//fa:P_13_1")
-        or get(root, ".//fa:P_13_2")
-        or get(root, ".//fa:P_13_3")
-    )
-
-    data["vat"] = (
-        get(root, ".//fa:P_14_1")
-        or get(root, ".//fa:P_14_2")
-        or get(root, ".//fa:P_14_3")
-    )
-
+    data["netto"] = get(root, ".//fa:P_13_1") or get(root, ".//fa:P_13_2")
+    data["vat"] = get(root, ".//fa:P_14_1") or get(root, ".//fa:P_14_2")
     data["brutto"] = get(root, ".//fa:P_15")
 
     return data
@@ -161,17 +140,6 @@ def html_invoice(d):
         </tr>
         """
 
-    okres_html = ""
-    if d["okres_od"] or d["okres_do"]:
-        okres_html = f"""
-        <tr>
-            <td>Okres:</td>
-            <td colspan="3">{d["okres_od"]} → {d["okres_do"]}</td>
-        </tr>
-        """
-
-    opis_html = "<br>".join(d["opisy"])
-
     return f"""
     <html>
     <head>
@@ -179,6 +147,9 @@ def html_invoice(d):
     <style>
         body {{ font-family: Arial; background:#eee; padding:20px; }}
         .container {{ background:white; padding:30px; max-width:1100px; margin:auto; }}
+
+        .top {{ display:flex; justify-content:space-between; }}
+        .dates {{ width:350px; }}
 
         .row {{ display:flex; justify-content:space-between; margin-top:20px; }}
         .box {{ width:48%; }}
@@ -192,17 +163,26 @@ def html_invoice(d):
         .summary td {{ border:none; padding:4px; }}
         .summary .label {{ text-align:left; }}
         .summary .value {{ text-align:right; }}
-
-        .extra {{ margin-top:20px; }}
     </style>
     </head>
     <body>
     <div class="container">
 
-    <h2>FAKTURA</h2>
+    <div class="top">
+        <div>
+            <h2>FAKTURA</h2>
+            <b>Numer:</b> {d["numer"]}<br>
+            <b>KSeF:</b> {d["ksef_number"]}<br>
+        </div>
 
-    <b>Numer:</b> {d["numer"]}<br>
-    <b>KSeF:</b> {d["ksef_number"] if d["ksef_number"] else "BRAK"}<br>
+        <table class="dates">
+            <tr><td>Wystawienia:</td><td>{d["data_wystawienia"]}</td></tr>
+            <tr><td>Sprzedaży:</td><td>{d["data_sprzedazy"]}</td></tr>
+            <tr><td>Utworzenia:</td><td>{d["data_utworzenia"]}</td></tr>
+            <tr><td>KSeF:</td><td>{d["data_ksef"]}</td></tr>
+            <tr><td>Termin:</td><td>{d["termin_platnosci"]}</td></tr>
+        </table>
+    </div>
 
     <div class="row">
         <div class="box">
@@ -222,55 +202,16 @@ def html_invoice(d):
 
     <table>
         <tr>
-            <td>Wystawienia:</td><td>{d["data_wystawienia"]}</td>
-            <td>Sprzedaży:</td><td>{d["data_sprzedazy"]}</td>
-        </tr>
-        <tr>
-            <td>Utworzenia:</td><td>{d["data_utworzenia"]}</td>
-            <td>KSeF:</td><td>{d["data_ksef"]}</td>
-        </tr>
-        <tr>
-            <td>Zapłaty:</td><td>{d["data_zaplaty"]}</td>
-            <td>Termin:</td><td>{d["termin_platnosci"]}</td>
-        </tr>
-        {okres_html}
-    </table>
-
-    <table>
-        <tr>
             <th>#</th><th>Nazwa</th><th>Ilość</th><th>Cena</th><th>Netto</th><th>%</th><th>VAT</th><th>Brutto</th>
         </tr>
         {rows}
     </table>
 
     <table class="summary">
-        <tr>
-            <td class="label">Netto:</td>
-            <td class="value">{format_money(d["netto"])}</td>
-        </tr>
-        <tr>
-            <td class="label">VAT:</td>
-            <td class="value">{format_money(d["vat"])}</td>
-        </tr>
-        <tr>
-            <td class="label"><b>Brutto:</b></td>
-            <td class="value"><b>{format_money(d["brutto"])}</b></td>
-        </tr>
+        <tr><td class="label">Netto:</td><td class="value">{format_money(d["netto"])}</td></tr>
+        <tr><td class="label">VAT:</td><td class="value">{format_money(d["vat"])}</td></tr>
+        <tr><td class="label"><b>Brutto:</b></td><td class="value"><b>{format_money(d["brutto"])}</b></td></tr>
     </table>
-
-    <div class="extra">
-        <b>Konto:</b> {d["konto"]} {d["bank"]}<br><br>
-
-        <b>Płatność:</b><br>
-        Status: {"Zapłacona" if d["zaplacono"] == "1" else "Nie zapłacona"}<br>
-        Data: {d["data_zaplaty_real"]}<br>
-        Forma: {forma_platnosci_txt(d["forma_platnosci"])}<br><br>
-
-        <b>Opis:</b><br>
-        {opis_html}<br><br>
-
-        {"<b>Uwagi:</b><br>" + d["stopka"] if d["stopka"] else ""}
-    </div>
 
     </div>
     </body>
@@ -279,44 +220,24 @@ def html_invoice(d):
 
 
 def show(xml_path):
-    try:
-        if not os.path.exists(xml_path):
-            print("Plik nie istnieje:", xml_path)
-            input("Enter...")
-            return
+    tree = etree.parse(xml_path)
+    root = tree.getroot()
 
-        tree = etree.parse(xml_path)
-        root = tree.getroot()
+    data = parse_invoice(root)
+    html = html_invoice(data)
 
-        data = parse_invoice(root)
-        html = html_invoice(data)
+    f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
+    f.write(html.encode("utf-8"))
+    f.close()
 
-        f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
-        f.write(html.encode("utf-8"))
-        f.close()
-
-        print("Plik wygenerowany:", f.name)
-        webbrowser.open(f.name)
-
-        input("Naciśnij Enter aby zamknąć...")
-
-    except Exception as e:
-        print("BŁĄD:", e)
-        input("Enter...")
+    webbrowser.open(f.name)
 
 
 if __name__ == "__main__":
-    try:
-        if len(sys.argv) > 1:
-            show(sys.argv[1])
-        else:
-            Tk().withdraw()
-            file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
-            if file_path:
-                show(file_path)
-            else:
-                print("Nie wybrano pliku")
-                input("Enter...")
-    except Exception as e:
-        print("Błąd główny:", e)
-        input("Enter...")
+    if len(sys.argv) > 1:
+        show(sys.argv[1])
+    else:
+        Tk().withdraw()
+        file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
+        if file_path:
+            show(file_path)

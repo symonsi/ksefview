@@ -15,6 +15,13 @@ def get(el, path):
     return x.text.strip() if x is not None and x.text else ""
 
 
+def safe_float(x):
+    try:
+        return float(x)
+    except:
+        return 0.0
+
+
 def format_date(dt):
     return dt.split("T")[0] if dt else ""
 
@@ -43,15 +50,12 @@ def forma_platnosci_txt(v):
     }.get(v, v)
 
 
-# 🔥 ZMIANA: dodany xml_path
 def parse_invoice(root, xml_path):
     data = {}
 
     data["numer"] = get(root, ".//fa:P_2")
 
     ksef = get(root, ".//fa:KSeFNumber")
-
-    # 🔥 FALLBACK NA NAZWĘ PLIKU
     if not ksef:
         ksef = os.path.splitext(os.path.basename(xml_path))[0]
 
@@ -153,8 +157,9 @@ def html_invoice(d):
 
         rate = item["vat_proc"]
         vat_summary.setdefault(rate, {"netto": 0, "vat": 0})
-        vat_summary[rate]["netto"] += float(item["netto"])
-        vat_summary[rate]["vat"] += float(item["vat_kwota"])
+
+        vat_summary[rate]["netto"] += safe_float(item["netto"])
+        vat_summary[rate]["vat"] += safe_float(item["vat_kwota"])
 
     vat_rows = ""
     for rate, vals in vat_summary.items():
@@ -278,7 +283,6 @@ def show(xml_path):
     tree = etree.parse(xml_path)
     root = tree.getroot()
 
-    # 🔥 ZMIANA
     data = parse_invoice(root, xml_path)
 
     html = html_invoice(data)
@@ -298,4 +302,3 @@ if __name__ == "__main__":
         file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
         if file_path:
             show(file_path)
-            

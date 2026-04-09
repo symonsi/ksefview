@@ -15,10 +15,6 @@ def get(el, path):
     return x.text.strip() if x is not None and x.text else ""
 
 
-def get_all(root, path):
-    return [el.text.strip() for el in root.findall(path, NS) if el.text]
-
-
 def get_any(root, tag):
     for el in root.iter():
         if el.tag.endswith(tag):
@@ -27,15 +23,20 @@ def get_any(root, tag):
 
 
 def format_date(dt):
-    return dt.split("T")[0] if dt else ""
+    if not dt:
+        return ""
+    return dt.split("T")[0]
 
 
 def format_number(n):
     try:
         n = float(n)
-        return str(int(n)) if n.is_integer() else str(n).replace(".", ",")
     except:
         return ""
+    if n.is_integer():
+        return str(int(n))
+    else:
+        return str(n).replace(".", ",")
 
 
 def format_money(n):
@@ -48,24 +49,34 @@ def format_money(n):
 def parse_invoice(root):
     data = {}
 
+    # NUMERY
     data["numer"] = get(root, ".//fa:P_2")
 
     data["ksef_number"] = (
         get(root, ".//fa:KSeFNumber")
         or get_any(root, "KSeFNumber")
+        or get(root, ".//fa:NumerKSeF")
+        or get_any(root, "NumerKSeF")
     )
 
-    # DATY
+    # TYP
+    data["rodzaj"] = get(root, ".//fa:RodzajFaktury")
+
+    # DATY (pełne)
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))
+    data["data_utworzenia"] = format_date(get(root, ".//fa:DataWytworzeniaFa"))
     data["data_ksef"] = format_date(get(root, ".//fa:KSeFDate"))
-    data["termin"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
 
-    # KONTO
+    data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
+    data["termin_platnosci"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
+    data["data_zamowienia"] = format_date(get(root, ".//fa:DataZamowienia"))
+
+    # 🆕 KONTO
     data["konto"] = get(root, ".//fa:RachunekBankowy/fa:NrRB")
     data["bank"] = get(root, ".//fa:RachunekBankowy/fa:NazwaBanku")
 
-    # OPISY
+    # 🆕 OPISY
     opisy = []
     for o in root.findall(".//fa:DodatkowyOpis", NS):
         k = get(o, ".//fa:Klucz")
@@ -74,16 +85,16 @@ def parse_invoice(root):
             opisy.append(f"{k}: {w}")
     data["opisy"] = opisy
 
-    # PODMIOTY
+    # Sprzedawca
     sprzedawca = root.find(".//fa:Podmiot1", NS)
-    nabywca = root.find(".//fa:Podmiot2", NS)
-
     data["sprzedawca"] = {
         "nazwa": get(sprzedawca, ".//fa:Nazwa"),
         "nip": get(sprzedawca, ".//fa:NIP"),
         "adres": get(sprzedawca, ".//fa:AdresL1"),
     }
 
+    # Nabywca
+    nabywca = root.find(".//fa:Podmiot2", NS)
     data["nabywca"] = {
         "nazwa": get(nabywca, ".//fa:Nazwa"),
         "nip": get(nabywca, ".//fa:NIP"),
@@ -95,31 +106,35 @@ def parse_invoice(root):
     for poz in root.findall(".//fa:FaWiersz", NS):
 
         ilosc = get(poz, ".//fa:P_8B")
-        cena = get(poz, ".//fa:P_9A")
-        netto = get(poz, ".//fa:P_11")
+        cena = get(poz, ".//fa:P_9A") or get(poz, ".//fa:P_9B")
+        netto = get(poz, ".//fa:P_11") or get(poz, ".//fa:P_11A")
         vat_proc = get(poz, ".//fa:P_12")
 
         try:
             netto_f = float(netto)
-            vat_f = float(vat_proc)
-            vat_kwota = netto_f * vat_f / 100
+            vat_proc_f = float(vat_proc)
+            vat_kwota = netto_f * vat_proc_f / 100
             brutto = netto_f + vat_kwota
         except:
             vat_kwota = 0
             brutto = 0
+
+        rabat = get(poz, ".//fa:P_10") or "0"
 
         items.append({
             "nazwa": get(poz, ".//fa:P_7"),
             "ilosc": ilosc,
             "cena": cena,
             "netto": netto,
-            "vat_proc": vat_proc,
             "vat_kwota": vat_kwota,
+            "vat_proc": vat_proc,
+            "rabat": rabat,
             "brutto": brutto,
         })
 
     data["items"] = items
 
+    # PODSUMOWANIE
     data["netto"] = get(root, ".//fa:P_13_1")
     data["vat"] = get(root, ".//fa:P_14_1")
     data["brutto"] = get(root, ".//fa:P_15")
@@ -129,21 +144,25 @@ def parse_invoice(root):
 
 def html_invoice(d):
     rows = ""
-    for i, item in enumerate(d["items"], 1):
+    for i, item in enumerate(d["items"], start=1):
         rows += f"""
         <tr>
             <td>{i}</td>
             <td style="text-align:left">{item['nazwa']}</td>
             <td>{format_number(item['ilosc'])}</td>
             <td class="num">{format_money(item['cena'])}</td>
+            <td class="num">{format_money(item['rabat'])}</td>
             <td class="num">{format_money(item['netto'])}</td>
             <td>{item['vat_proc']}</td>
             <td class="num">{format_money(item['vat_kwota'])}</td>
-            <td class="num">{format_money(item['brutto'])}</td>
+            <td class="num"><b>{format_money(item['brutto'])}</b></td>
         </tr>
         """
 
-    opisy_html = "<br>".join(d["opisy"])
+    typ = "KOREKTA" if d["rodzaj"] == "KOR" else ""
+
+    # 🆕 OPIS HTML
+    opis_html = "<br>".join(d["opisy"])
 
     return f"""
     <html>
@@ -151,45 +170,104 @@ def html_invoice(d):
     <meta charset="utf-8">
     <style>
         body {{ font-family: Arial; background:#eee; padding:20px; }}
-        .container {{ background:white; padding:30px; max-width:1100px; margin:auto; }}
-        .num {{ text-align:right; }}
-        table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
-        th, td {{ border:1px solid #ccc; padding:6px; }}
+        .container {{
+            background:white; padding:30px; max-width:1100px;
+            margin:auto; box-shadow:0 0 10px rgba(0,0,0,0.2);
+        }}
+
+        .top {{
+            display:flex;
+            justify-content:space-between;
+            margin-bottom:10px;
+        }}
+
+        .dates table {{ font-size:13px; }}
+        .dates td {{ padding:2px 8px; }}
+
+        .row {{ display:flex; justify-content:space-between; margin-top:15px; }}
+        .box {{ width:48%; }}
+
+        table.main {{
+            width:100%;
+            border-collapse:collapse;
+            margin-top:20px;
+        }}
+
+        th, td {{
+            border:1px solid #ccc;
+            padding:6px;
+        }}
+
         th {{ background:#f0f0f0; }}
-        .box {{ margin-top:20px; }}
+        .num {{ text-align:right; }}
+
+        .total {{
+            text-align:right;
+            margin-top:20px;
+            font-size:18px;
+            font-weight:bold;
+        }}
+
+        .kor {{ color:red; font-weight:bold; }}
+
+        .extra {{ margin-top:20px; font-size:14px; }}
     </style>
     </head>
 
     <body>
         <div class="container">
 
-            <b>Numer:</b> {d["numer"]}<br>
-            <b>KSeF:</b> {d["ksef_number"]}<br><br>
+            <div class="top">
+                <div>
+                    <b>Numer:</b> {d["numer"]}<br>
+                    <b>KSeF:</b> {d["ksef_number"]}<br>
+                    <span class="kor">{typ}</span>
+                </div>
 
-            <b>Daty:</b><br>
-            Wystawienia: {d["data_wystawienia"]}<br>
-            Sprzedaży: {d["data_sprzedazy"]}<br>
-            Termin: {d["termin"]}<br>
-            KSeF: {d["data_ksef"]}<br>
-
-            <div class="box">
-                <b>Sprzedawca:</b><br>
-                {d["sprzedawca"]["nazwa"]}<br>
-                {d["sprzedawca"]["adres"]}
+                <div class="dates">
+                    <table>
+                        <tr>
+                            <td>Wystawienia:</td><td>{d["data_wystawienia"]}</td>
+                            <td>Sprzedaży:</td><td>{d["data_sprzedazy"]}</td>
+                        </tr>
+                        <tr>
+                            <td>Utworzenia:</td><td>{d["data_utworzenia"]}</td>
+                            <td>KSeF:</td><td>{d["data_ksef"]}</td>
+                        </tr>
+                        <tr>
+                            <td>Zapłaty:</td><td>{d["data_zaplaty"]}</td>
+                            <td>Termin:</td><td>{d["termin_platnosci"]}</td>
+                        </tr>
+                        <tr>
+                            <td>Zamówienia:</td><td>{d["data_zamowienia"]}</td>
+                        </tr>
+                    </table>
+                </div>
             </div>
 
-            <div class="box">
-                <b>Nabywca:</b><br>
-                {d["nabywca"]["nazwa"]}<br>
-                {d["nabywca"]["adres"]}
+            <div class="row">
+                <div class="box">
+                    <b>Sprzedawca:</b><br>
+                    {d["sprzedawca"]["nazwa"]}<br>
+                    NIP: {d["sprzedawca"]["nip"]}<br>
+                    {d["sprzedawca"]["adres"]}
+                </div>
+
+                <div class="box">
+                    <b>Nabywca:</b><br>
+                    {d["nabywca"]["nazwa"]}<br>
+                    NIP: {d["nabywca"]["nip"]}<br>
+                    {d["nabywca"]["adres"]}
+                </div>
             </div>
 
-            <table>
+            <table class="main">
                 <tr>
                     <th>#</th>
                     <th>Nazwa</th>
                     <th>Ilość</th>
                     <th>Cena</th>
+                    <th>Rabat</th>
                     <th>Netto</th>
                     <th>%</th>
                     <th>VAT</th>
@@ -198,18 +276,16 @@ def html_invoice(d):
                 {rows}
             </table>
 
-            <div class="box">
-                <b>Do zapłaty:</b> {format_money(d["brutto"])} zł
+            <div class="total">
+                Netto: {format_money(d["netto"])} zł<br>
+                VAT: {format_money(d["vat"])} zł<br>
+                Do zapłaty: {format_money(d["brutto"])} zł
             </div>
 
-            <div class="box">
-                <b>Konto:</b> {d["konto"]}<br>
-                {d["bank"]}
-            </div>
-
-            <div class="box">
+            <div class="extra">
+                <b>Konto:</b> {d["konto"]} {d["bank"]}<br><br>
                 <b>Opis:</b><br>
-                {opisy_html}
+                {opis_html}
             </div>
 
         </div>
@@ -237,6 +313,6 @@ if __name__ == "__main__":
         show(sys.argv[1])
     else:
         Tk().withdraw()
-        path = filedialog.askopenfilename(filetypes=[("XML", "*.xml")])
-        if path:
-            show(path)
+        file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
+        if file_path:
+            show(file_path)

@@ -43,11 +43,19 @@ def forma_platnosci_txt(v):
     }.get(v, v)
 
 
-def parse_invoice(root):
+# 🔥 ZMIANA: dodany xml_path
+def parse_invoice(root, xml_path):
     data = {}
 
     data["numer"] = get(root, ".//fa:P_2")
-    data["ksef_number"] = get(root, ".//fa:KSeFNumber")
+
+    ksef = get(root, ".//fa:KSeFNumber")
+
+    # 🔥 FALLBACK NA NAZWĘ PLIKU
+    if not ksef:
+        ksef = os.path.splitext(os.path.basename(xml_path))[0]
+
+    data["ksef_number"] = ksef
 
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))
@@ -127,7 +135,6 @@ def parse_invoice(root):
 def html_invoice(d):
     rows = ""
 
-    # 🔥 PODSUMOWANIE VAT WG STAWEK
     vat_summary = {}
 
     for i, item in enumerate(d["items"], start=1):
@@ -236,7 +243,6 @@ def html_invoice(d):
         {rows}
     </table>
 
-    <!-- 🔥 VAT PO LEWEJ -->
     <table class="vat-left">
         <tr><th>VAT %</th><th>Netto</th><th>VAT</th><th>Brutto</th></tr>
         {vat_rows}
@@ -272,7 +278,9 @@ def show(xml_path):
     tree = etree.parse(xml_path)
     root = tree.getroot()
 
-    data = parse_invoice(root)
+    # 🔥 ZMIANA
+    data = parse_invoice(root, xml_path)
+
     html = html_invoice(data)
 
     f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
@@ -290,3 +298,4 @@ if __name__ == "__main__":
         file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
         if file_path:
             show(file_path)
+            

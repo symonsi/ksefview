@@ -56,12 +56,15 @@ def parse_invoice(root):
     data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
     data["termin_platnosci"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
 
+    # OKRES
     data["okres_od"] = format_date(get(root, ".//fa:P_6_Od"))
     data["okres_do"] = format_date(get(root, ".//fa:P_6_Do"))
 
+    # KONTO
     data["konto"] = get(root, ".//fa:RachunekBankowy/fa:NrRB")
     data["bank"] = get(root, ".//fa:RachunekBankowy/fa:NazwaBanku")
 
+    # OPISY
     opisy = []
     for o in root.findall(".//fa:DodatkowyOpis", NS):
         k = get(o, "fa:Klucz")
@@ -70,12 +73,15 @@ def parse_invoice(root):
             opisy.append(f"{k}: {w}")
     data["opisy"] = opisy
 
+    # PŁATNOŚĆ
     data["zaplacono"] = get(root, ".//fa:Zaplacono")
     data["data_zaplaty_real"] = format_date(get(root, ".//fa:DataZaplaty"))
     data["forma_platnosci"] = get(root, ".//fa:FormaPlatnosci")
 
+    # STOPKA
     data["stopka"] = get(root, ".//fa:StopkaFaktury")
 
+    # PODMIOTY
     sprzedawca = root.find(".//fa:Podmiot1", NS)
     nabywca = root.find(".//fa:Podmiot2", NS)
 
@@ -91,6 +97,7 @@ def parse_invoice(root):
         "adres": get(nabywca, ".//fa:AdresL1"),
     }
 
+    # POZYCJE
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
         netto = get(poz, "fa:P_11")
@@ -117,6 +124,7 @@ def parse_invoice(root):
 
     data["items"] = items
 
+    # PODSUMOWANIE
     data["netto"] = get(root, ".//fa:P_13_1") or get(root, ".//fa:P_13_2")
     data["vat"] = get(root, ".//fa:P_14_1") or get(root, ".//fa:P_14_2")
     data["brutto"] = get(root, ".//fa:P_15")
@@ -126,6 +134,7 @@ def parse_invoice(root):
 
 def html_invoice(d):
     rows = ""
+
     for i, item in enumerate(d["items"], start=1):
         rows += f"""
         <tr>
@@ -139,6 +148,11 @@ def html_invoice(d):
             <td class="num"><b>{format_money(item['brutto'])}</b></td>
         </tr>
         """
+
+    # OKRES
+    okres_html = ""
+    if d["okres_od"] or d["okres_do"]:
+        okres_html = f"<tr><td>Okres:</td><td>{d['okres_od']} → {d['okres_do']}</td></tr>"
 
     opis_html = "<br>".join(d["opisy"])
 
@@ -167,6 +181,7 @@ def html_invoice(d):
         .extra {{ margin-top:30px; }}
     </style>
     </head>
+
     <body>
     <div class="container">
 
@@ -182,6 +197,7 @@ def html_invoice(d):
             <tr><td>Sprzedaży:</td><td>{d["data_sprzedazy"]}</td></tr>
             <tr><td>KSeF:</td><td>{d["data_ksef"]}</td></tr>
             <tr><td>Termin:</td><td>{d["termin_platnosci"]}</td></tr>
+            {okres_html}
         </table>
     </div>
 

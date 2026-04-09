@@ -48,19 +48,19 @@ def parse_invoice(root):
 
     data["numer"] = get(root, ".//fa:P_2")
     data["ksef_number"] = get(root, ".//fa:KSeFNumber") or get(root, ".//fa:NumerKSeF")
-    data["rodzaj"] = get(root, ".//fa:RodzajFaktury")
 
     # DATY
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))
-    data["data_utworzenia"] = format_date(get(root, ".//fa:DataWytworzeniaFa"))
-    data["data_ksef"] = format_date(get(root, ".//fa:KSeFDate"))
-    data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
-    data["termin_platnosci"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
+    data["termin"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
 
-    # OKRES
     data["okres_od"] = format_date(get(root, ".//fa:P_6_Od"))
     data["okres_do"] = format_date(get(root, ".//fa:P_6_Do"))
+
+    # PŁATNOŚĆ
+    data["zaplacono"] = get(root, ".//fa:Zaplacono")
+    data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
+    data["forma"] = get(root, ".//fa:FormaPlatnosci")
 
     # KONTO
     data["konto"] = get(root, ".//fa:RachunekBankowy/fa:NrRB")
@@ -75,47 +75,13 @@ def parse_invoice(root):
             opisy.append(f"{k}: {w}")
     data["opisy"] = opisy
 
-    # PŁATNOŚĆ
-    data["zaplacono"] = get(root, ".//fa:Zaplacono")
-    data["data_zaplaty_real"] = format_date(get(root, ".//fa:DataZaplaty"))
-    data["forma_platnosci"] = get(root, ".//fa:FormaPlatnosci")
-
     # STOPKA
     data["stopka"] = get(root, ".//fa:StopkaFaktury")
 
-    # VAT SUMMARY (ERP STYLE)
-    vat_rows = []
-    total_netto = 0
-    total_vat = 0
-
-    for i in range(1, 10):
-        netto = get(root, f".//fa:P_13_{i}")
-        vat = get(root, f".//fa:P_14_{i}")
-
-        if netto:
-            try:
-                netto_f = float(netto)
-                vat_f = float(vat) if vat else 0
-
-                total_netto += netto_f
-                total_vat += vat_f
-
-                vat_rows.append({
-                    "stawka": i,
-                    "netto": netto_f,
-                    "vat": vat_f,
-                    "brutto": netto_f + vat_f
-                })
-            except:
-                pass
-
-    data["vat_rows"] = vat_rows
-    data["netto"] = total_netto
-    data["vat"] = total_vat
-    data["brutto"] = get(root, ".//fa:P_15")
-
-    # POZYCJE
+    # POZYCJE + VAT
     items = []
+    vat_map = {}
+
     for poz in root.findall(".//fa:FaWiersz", NS):
 
         netto = get(poz, "fa:P_11")
@@ -123,12 +89,21 @@ def parse_invoice(root):
 
         try:
             netto_f = float(netto)
-            vat_f = float(vat_proc)
-            vat_kwota = netto_f * vat_f / 100
-            brutto = netto_f + vat_kwota
         except:
-            vat_kwota = 0
-            brutto = 0
+            netto_f = 0
+
+        try:
+            vat_rate = float(vat_proc)
+            vat_val = netto_f * vat_rate / 100
+        except:
+            vat_val = 0
+
+        # VAT SUMMARY
+        if vat_proc not in vat_map:
+            vat_map[vat_proc] = {"netto": 0, "vat": 0}
+
+        vat_map[vat_proc]["netto"] += netto_f
+        vat_map[vat_proc]["vat"] += vat_val
 
         items.append({
             "nazwa": get(poz, "fa:P_7"),
@@ -136,11 +111,17 @@ def parse_invoice(root):
             "cena": get(poz, "fa:P_9A"),
             "netto": netto,
             "vat_proc": vat_proc,
-            "vat_kwota": vat_kwota,
-            "brutto": brutto,
+            "vat": vat_val,
+            "brutto": netto_f + vat_val
         })
 
     data["items"] = items
+    data["vat_summary"] = vat_map
+
+    # SUMY
+    data["netto"] = sum(v["netto"] for v in vat_map.values())
+    data["vat"] = sum(v["vat"] for v in vat_map.values())
+    data["brutto"] = get(root, ".//fa:P_15")
 
     return data
 
@@ -151,32 +132,50 @@ def html_invoice(d):
         rows += f"""
         <tr>
             <td>{i}</td>
-            <td style="text-align:left">{item['nazwa']}</td>
+            <td>{item['nazwa']}</td>
             <td>{format_number(item['ilosc'])}</td>
             <td class="num">{format_money(item['cena'])}</td>
             <td class="num">{format_money(item['netto'])}</td>
             <td>{item['vat_proc']}</td>
-            <td class="num">{format_money(item['vat_kwota'])}</td>
+            <td class="num">{format_money(item['vat'])}</td>
             <td class="num">{format_money(item['brutto'])}</td>
         </tr>
         """
 
-    # VAT TABLE (KOMPAKT)
-    vat_table = ""
-    for v in d["vat_rows"]:
-        vat_table += f"""
+    # VAT TABLE
+    vat_rows = ""
+    for stawka, v in d["vat_summary"].items():
+        vat_rows += f"""
         <tr>
-            <td>{v['stawka']}</td>
+            <td>{stawka}</td>
             <td class="num">{format_money(v['netto'])}</td>
             <td class="num">{format_money(v['vat'])}</td>
-            <td class="num">{format_money(v['brutto'])}</td>
+            <td class="num">{format_money(v['netto'] + v['vat'])}</td>
         </tr>
         """
 
-    okres = ""
-    if d["okres_od"]:
-        okres = f"{d['okres_od']} → {d['okres_do']}"
+    vat_table = f"""
+    <div style="margin-top:15px;">
+    <b>VAT:</b>
+    <table style="width:300px;">
+        <tr>
+            <th>%</th>
+            <th>Netto</th>
+            <th>VAT</th>
+            <th>Brutto</th>
+        </tr>
+        {vat_rows}
+        <tr>
+            <th>SUMA</th>
+            <th class="num">{format_money(d['netto'])}</th>
+            <th class="num">{format_money(d['vat'])}</th>
+            <th class="num">{format_money(d['netto'] + d['vat'])}</th>
+        </tr>
+    </table>
+    </div>
+    """
 
+    okres = f"{d['okres_od']} → {d['okres_do']}" if d["okres_od"] else ""
     opis = "<br>".join(d["opisy"])
 
     return f"""
@@ -184,31 +183,23 @@ def html_invoice(d):
     <head>
     <meta charset="utf-8">
     <style>
-        body {{ font-family: Arial; background:#eee; padding:20px; }}
-        .container {{ background:white; padding:20px; max-width:1100px; margin:auto; }}
-
-        table {{ width:100%; border-collapse:collapse; margin-top:10px; }}
+        body {{ font-family: Arial; padding:20px; }}
+        table {{ border-collapse:collapse; width:100%; margin-top:10px; }}
         th, td {{ border:1px solid #ccc; padding:5px; }}
-        th {{ background:#f0f0f0; }}
-
+        th {{ background:#eee; }}
         .num {{ text-align:right; }}
-        .grid {{ display:flex; gap:20px; margin-top:15px; }}
-        .box {{ flex:1; }}
-
     </style>
     </head>
     <body>
 
-    <div class="container">
-
     <b>Numer:</b> {d["numer"]}<br>
-    <b>KSeF:</b> {d["ksef_number"]}<br>
+    <b>KSeF:</b> {d["ksef_number"]}<br><br>
 
     <table>
         <tr>
             <td>Wyst:</td><td>{d["data_wystawienia"]}</td>
             <td>Sprzedaż:</td><td>{d["data_sprzedazy"]}</td>
-            <td>Termin:</td><td>{d["termin_platnosci"]}</td>
+            <td>Termin:</td><td>{d["termin"]}</td>
         </tr>
         <tr>
             <td>Okres:</td><td colspan="5">{okres}</td>
@@ -222,41 +213,24 @@ def html_invoice(d):
         {rows}
     </table>
 
-    <div class="grid">
+    {vat_table}
 
-        <div class="box">
-            <b>VAT</b>
-            <table>
-                <tr>
-                    <th>%</th><th>Netto</th><th>VAT</th><th>Brutto</th>
-                </tr>
-                {vat_table}
-            </table>
-        </div>
+    <div style="margin-top:10px;">
+        <b>Do zapłaty:</b> {format_money(d["brutto"])} zł<br><br>
 
-        <div class="box">
-            <b>Płatność</b><br>
-            Status: {"TAK" if d["zaplacono"]=="1" else "NIE"}<br>
-            Data: {d["data_zaplaty_real"]}<br>
-            Forma: {forma_platnosci_txt(d["forma_platnosci"])}<br><br>
+        <b>Płatność:</b>
+        {"Zapłacona" if d["zaplacono"]=="1" else "Nie zapłacona"},
+        {forma_platnosci_txt(d["forma"])},
+        {d["data_zaplaty"]}<br><br>
 
-            <b>Konto:</b><br>
-            {d["konto"]}<br>
-            {d["bank"]}<br><br>
+        <b>Konto:</b> {d["konto"]} {d["bank"]}<br><br>
 
-            <b>Do zapłaty:</b><br>
-            {format_money(d["brutto"])} zł
-        </div>
-
-    </div>
-
-    <div style="margin-top:15px;">
         <b>Opis:</b><br>
         {opis}<br><br>
+
         {d["stopka"]}
     </div>
 
-    </div>
     </body>
     </html>
     """

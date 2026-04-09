@@ -46,27 +46,28 @@ def forma_platnosci_txt(v):
 def parse_invoice(root):
     data = {}
 
+    # NUMERY
     data["numer"] = get(root, ".//fa:P_2")
     data["ksef_number"] = get(root, ".//fa:KSeFNumber") or get(root, ".//fa:NumerKSeF")
 
     # DATY
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))
-    data["termin"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
+    data["data_utworzenia"] = format_date(get(root, ".//fa:DataWytworzeniaFa"))
+    data["data_ksef"] = format_date(get(root, ".//fa:KSeFDate"))
+    data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
+    data["termin_platnosci"] = format_date(get(root, ".//fa:TerminPlatnosci/fa:Termin"))
+    data["data_zamowienia"] = format_date(get(root, ".//fa:DataZamowienia"))
 
+    # OKRES
     data["okres_od"] = format_date(get(root, ".//fa:P_6_Od"))
     data["okres_do"] = format_date(get(root, ".//fa:P_6_Do"))
-
-    # PŁATNOŚĆ
-    data["zaplacono"] = get(root, ".//fa:Zaplacono")
-    data["data_zaplaty"] = format_date(get(root, ".//fa:DataZaplaty"))
-    data["forma"] = get(root, ".//fa:FormaPlatnosci")
 
     # KONTO
     data["konto"] = get(root, ".//fa:RachunekBankowy/fa:NrRB")
     data["bank"] = get(root, ".//fa:RachunekBankowy/fa:NazwaBanku")
 
-    # OPIS
+    # OPISY
     opisy = []
     for o in root.findall(".//fa:DodatkowyOpis", NS):
         k = get(o, "fa:Klucz")
@@ -75,52 +76,77 @@ def parse_invoice(root):
             opisy.append(f"{k}: {w}")
     data["opisy"] = opisy
 
+    # PŁATNOŚĆ
+    data["zaplacono"] = get(root, ".//fa:Zaplacono")
+    data["data_zaplaty_real"] = format_date(get(root, ".//fa:DataZaplaty"))
+    data["forma_platnosci"] = get(root, ".//fa:FormaPlatnosci")
+
     # STOPKA
     data["stopka"] = get(root, ".//fa:StopkaFaktury")
 
-    # POZYCJE + VAT
-    items = []
-    vat_map = {}
+    # PODMIOTY
+    sprzedawca = root.find(".//fa:Podmiot1", NS)
+    nabywca = root.find(".//fa:Podmiot2", NS)
 
+    data["sprzedawca"] = {
+        "nazwa": get(sprzedawca, ".//fa:Nazwa"),
+        "nip": get(sprzedawca, ".//fa:NIP"),
+        "adres": get(sprzedawca, ".//fa:AdresL1"),
+    }
+
+    data["nabywca"] = {
+        "nazwa": get(nabywca, ".//fa:Nazwa"),
+        "nip": get(nabywca, ".//fa:NIP"),
+        "adres": get(nabywca, ".//fa:AdresL1"),
+    }
+
+    # POZYCJE
+    items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
 
-        netto = get(poz, "fa:P_11")
+        netto = get(poz, "fa:P_11") or get(poz, "fa:P_11A")
         vat_proc = get(poz, "fa:P_12")
 
         try:
             netto_f = float(netto)
+            vat_f = float(vat_proc)
+            vat_kwota = netto_f * vat_f / 100
+            brutto = netto_f + vat_kwota
         except:
-            netto_f = 0
-
-        try:
-            vat_rate = float(vat_proc)
-            vat_val = netto_f * vat_rate / 100
-        except:
-            vat_val = 0
-
-        # VAT SUMMARY
-        if vat_proc not in vat_map:
-            vat_map[vat_proc] = {"netto": 0, "vat": 0}
-
-        vat_map[vat_proc]["netto"] += netto_f
-        vat_map[vat_proc]["vat"] += vat_val
+            vat_kwota = 0
+            brutto = 0
 
         items.append({
             "nazwa": get(poz, "fa:P_7"),
             "ilosc": get(poz, "fa:P_8B"),
-            "cena": get(poz, "fa:P_9A"),
+            "cena": get(poz, "fa:P_9A") or get(poz, "fa:P_9B"),
             "netto": netto,
+            "vat_kwota": vat_kwota,
             "vat_proc": vat_proc,
-            "vat": vat_val,
-            "brutto": netto_f + vat_val
+            "rabat": get(poz, "fa:P_10") or "0",
+            "brutto": brutto,
         })
 
     data["items"] = items
-    data["vat_summary"] = vat_map
 
-    # SUMY
-    data["netto"] = sum(v["netto"] for v in vat_map.values())
-    data["vat"] = sum(v["vat"] for v in vat_map.values())
+    # SUMY (POPRAWKA NA WIELE STAWEK VAT)
+    total_netto = 0
+    total_vat = 0
+
+    for i in range(1, 10):
+        n = get(root, f".//fa:P_13_{i}")
+        v = get(root, f".//fa:P_14_{i}")
+
+        try:
+            if n:
+                total_netto += float(n)
+            if v:
+                total_vat += float(v)
+        except:
+            pass
+
+    data["netto"] = total_netto
+    data["vat"] = total_vat
     data["brutto"] = get(root, ".//fa:P_15")
 
     return data
@@ -128,109 +154,95 @@ def parse_invoice(root):
 
 def html_invoice(d):
     rows = ""
-    for i, item in enumerate(d["items"], 1):
+    for i, item in enumerate(d["items"], start=1):
         rows += f"""
         <tr>
             <td>{i}</td>
-            <td>{item['nazwa']}</td>
+            <td style="text-align:left">{item['nazwa']}</td>
             <td>{format_number(item['ilosc'])}</td>
             <td class="num">{format_money(item['cena'])}</td>
+            <td class="num">{format_money(item['rabat'])}</td>
             <td class="num">{format_money(item['netto'])}</td>
             <td>{item['vat_proc']}</td>
-            <td class="num">{format_money(item['vat'])}</td>
-            <td class="num">{format_money(item['brutto'])}</td>
+            <td class="num">{format_money(item['vat_kwota'])}</td>
+            <td class="num"><b>{format_money(item['brutto'])}</b></td>
         </tr>
         """
 
-    # VAT TABLE
-    vat_rows = ""
-    for stawka, v in d["vat_summary"].items():
-        vat_rows += f"""
+    okres_html = ""
+    if d["okres_od"] or d["okres_do"]:
+        okres_html = f"""
         <tr>
-            <td>{stawka}</td>
-            <td class="num">{format_money(v['netto'])}</td>
-            <td class="num">{format_money(v['vat'])}</td>
-            <td class="num">{format_money(v['netto'] + v['vat'])}</td>
+            <td>Okres:</td>
+            <td colspan="3">{d["okres_od"]} → {d["okres_do"]}</td>
         </tr>
         """
 
-    vat_table = f"""
-    <div style="margin-top:15px;">
-    <b>VAT:</b>
-    <table style="width:300px;">
-        <tr>
-            <th>%</th>
-            <th>Netto</th>
-            <th>VAT</th>
-            <th>Brutto</th>
-        </tr>
-        {vat_rows}
-        <tr>
-            <th>SUMA</th>
-            <th class="num">{format_money(d['netto'])}</th>
-            <th class="num">{format_money(d['vat'])}</th>
-            <th class="num">{format_money(d['netto'] + d['vat'])}</th>
-        </tr>
-    </table>
-    </div>
-    """
-
-    okres = f"{d['okres_od']} → {d['okres_do']}" if d["okres_od"] else ""
-    opis = "<br>".join(d["opisy"])
+    opis_html = "<br>".join(d["opisy"])
 
     return f"""
     <html>
     <head>
     <meta charset="utf-8">
     <style>
-        body {{ font-family: Arial; padding:20px; }}
-        table {{ border-collapse:collapse; width:100%; margin-top:10px; }}
-        th, td {{ border:1px solid #ccc; padding:5px; }}
-        th {{ background:#eee; }}
+        body {{ font-family: Arial; background:#eee; padding:20px; }}
+        .container {{ background:white; padding:30px; max-width:1100px; margin:auto; }}
         .num {{ text-align:right; }}
+        table {{ width:100%; border-collapse:collapse; margin-top:20px; }}
+        th, td {{ border:1px solid #ccc; padding:6px; }}
+        th {{ background:#f0f0f0; }}
+        .extra {{ margin-top:20px; }}
     </style>
     </head>
     <body>
 
+    <div class="container">
+
     <b>Numer:</b> {d["numer"]}<br>
-    <b>KSeF:</b> {d["ksef_number"]}<br><br>
+    <b>KSeF:</b> {d["ksef_number"] if d["ksef_number"] else "BRAK"}<br><br>
 
     <table>
         <tr>
-            <td>Wyst:</td><td>{d["data_wystawienia"]}</td>
-            <td>Sprzedaż:</td><td>{d["data_sprzedazy"]}</td>
-            <td>Termin:</td><td>{d["termin"]}</td>
+            <td>Wystawienia:</td><td>{d["data_wystawienia"]}</td>
+            <td>Sprzedaży:</td><td>{d["data_sprzedazy"]}</td>
         </tr>
         <tr>
-            <td>Okres:</td><td colspan="5">{okres}</td>
+            <td>Utworzenia:</td><td>{d["data_utworzenia"]}</td>
+            <td>KSeF:</td><td>{d["data_ksef"]}</td>
         </tr>
+        <tr>
+            <td>Zapłaty:</td><td>{d["data_zaplaty"]}</td>
+            <td>Termin:</td><td>{d["termin_platnosci"]}</td>
+        </tr>
+        {okres_html}
     </table>
 
     <table>
         <tr>
-            <th>#</th><th>Nazwa</th><th>Ilość</th><th>Cena</th><th>Netto</th><th>%</th><th>VAT</th><th>Brutto</th>
+            <th>#</th><th>Nazwa</th><th>Ilość</th><th>Cena</th><th>Rabat</th><th>Netto</th><th>%</th><th>VAT</th><th>Brutto</th>
         </tr>
         {rows}
     </table>
 
-    {vat_table}
-
-    <div style="margin-top:10px;">
+    <div class="extra">
+        <b>Netto:</b> {format_money(d["netto"])} zł<br>
+        <b>VAT:</b> {format_money(d["vat"])} zł<br>
         <b>Do zapłaty:</b> {format_money(d["brutto"])} zł<br><br>
 
         <b>Płatność:</b>
         {"Zapłacona" if d["zaplacono"]=="1" else "Nie zapłacona"},
-        {forma_platnosci_txt(d["forma"])},
-        {d["data_zaplaty"]}<br><br>
+        {forma_platnosci_txt(d["forma_platnosci"])},
+        {d["data_zaplaty_real"]}<br><br>
 
         <b>Konto:</b> {d["konto"]} {d["bank"]}<br><br>
 
         <b>Opis:</b><br>
-        {opis}<br><br>
+        {opis_html}<br><br>
 
         {d["stopka"]}
     </div>
 
+    </div>
     </body>
     </html>
     """
@@ -238,17 +250,26 @@ def html_invoice(d):
 
 def show(xml_path):
     try:
+        if not os.path.exists(xml_path):
+            print("Plik nie istnieje:", xml_path)
+            input("Enter...")
+            return
+
         tree = etree.parse(xml_path)
         root = tree.getroot()
 
-        html = html_invoice(parse_invoice(root))
+        data = parse_invoice(root)
+        html = html_invoice(data)
 
         f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
         f.write(html.encode("utf-8"))
         f.close()
 
+        print("Plik wygenerowany:", f.name)
+
         webbrowser.open(f.name)
-        input("Enter...")
+
+        input("Naciśnij Enter aby zamknąć...")
 
     except Exception as e:
         print("BŁĄD:", e)
@@ -256,7 +277,17 @@ def show(xml_path):
 
 
 if __name__ == "__main__":
-    Tk().withdraw()
-    path = filedialog.askopenfilename(filetypes=[("XML", "*.xml")])
-    if path:
-        show(path)
+    try:
+        if len(sys.argv) > 1:
+            show(sys.argv[1])
+        else:
+            Tk().withdraw()
+            file_path = filedialog.askopenfilename(filetypes=[("XML files", "*.xml")])
+            if file_path:
+                show(file_path)
+            else:
+                print("Nie wybrano pliku")
+                input("Enter...")
+    except Exception as e:
+        print("Błąd główny:", e)
+        input("Enter...")

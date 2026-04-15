@@ -105,17 +105,21 @@ def parse_invoice(root, xml_path):
 
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
-        netto = get(poz, "fa:P_11")
+        netto = get(poz, "fa:P_11") or get(poz, "fa:P_11A")
         vat_proc = get(poz, "fa:P_12")
 
         try:
             netto_f = float(netto)
-            vat_f = float(vat_proc)
-            vat_kwota = netto_f * vat_f / 100
-            brutto = netto_f + vat_kwota
         except:
-            vat_kwota = 0
-            brutto = 0
+            netto_f = 0
+
+        try:
+            vat_f = float(vat_proc)
+        except:
+            vat_f = 0
+
+        vat_kwota = netto_f * vat_f / 100
+        brutto = netto_f + vat_kwota
 
         items.append({
             "nazwa": get(poz, "fa:P_7"),

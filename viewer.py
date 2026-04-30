@@ -44,26 +44,35 @@ def forma_platnosci_txt(v):
     }.get(v, v)
 
 
-# 🔥 POPRAWIONA FUNKCJA
+# 🔥 POPRAWIONA FUNKCJA (AdresL2 + kod + miasto + fallback)
 def build_address(p):
-    ulica = get(p, ".//fa:AdresL1")
+    ulica1 = get(p, ".//fa:AdresL1")
+    ulica2 = get(p, ".//fa:AdresL2")
 
     kod = get(p, ".//fa:KodPocztowy") or get(p, ".//fa:Adres/fa:KodPocztowy")
     miasto = get(p, ".//fa:Miejscowosc") or get(p, ".//fa:Adres/fa:Miejscowosc")
 
-    # fallback – wyciąganie z tekstu
+    # fallback – wyciąganie z AdresL1
     if not kod or not miasto:
-        m = re.search(r"(\d{2}-\d{3})\s+(.+)$", ulica)
+        m = re.search(r"(\d{2}-\d{3})\s+(.+)$", ulica1)
         if m:
             kod = kod or m.group(1)
             miasto = miasto or m.group(2)
-            ulica = ulica.replace(m.group(0), "").strip(", ")
+            ulica1 = ulica1.replace(m.group(0), "").strip(", ")
+
+    lines = []
+
+    if ulica1:
+        lines.append(ulica1)
+
+    if ulica2:
+        lines.append(ulica2)
 
     line2 = " ".join(x for x in [kod, miasto] if x)
-
     if line2:
-        return f"{ulica}<br>{line2}"
-    return ulica
+        lines.append(line2)
+
+    return "<br>".join(lines)
 
 
 def parse_invoice(root):

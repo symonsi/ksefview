@@ -15,13 +15,6 @@ def get(el, path):
     return x.text.strip() if x is not None and x.text else ""
 
 
-def safe_float(x):
-    try:
-        return float(x)
-    except:
-        return 0.0
-
-
 def format_date(dt):
     return dt.split("T")[0] if dt else ""
 
@@ -50,16 +43,29 @@ def forma_platnosci_txt(v):
     }.get(v, v)
 
 
-def parse_invoice(root, xml_path):
+# 🔥 NOWA FUNKCJA – adres z kodem i miastem
+def build_address(p):
+    ulica = get(p, ".//fa:AdresL1")
+    kod = get(p, ".//fa:KodPocztowy")
+    miasto = get(p, ".//fa:Miejscowosc")
+
+    if not kod:
+        kod = get(p, ".//fa:Adres/fa:KodPocztowy")
+    if not miasto:
+        miasto = get(p, ".//fa:Adres/fa:Miejscowosc")
+
+    line2 = " ".join(x for x in [kod, miasto] if x)
+
+    if line2:
+        return f"{ulica}<br>{line2}"
+    return ulica
+
+
+def parse_invoice(root):
     data = {}
 
     data["numer"] = get(root, ".//fa:P_2")
-
-    ksef = get(root, ".//fa:KSeFNumber")
-    if not ksef:
-        ksef = os.path.splitext(os.path.basename(xml_path))[0]
-
-    data["ksef_number"] = ksef
+    data["ksef_number"] = get(root, ".//fa:KSeFNumber")
 
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))
@@ -94,32 +100,28 @@ def parse_invoice(root, xml_path):
     data["sprzedawca"] = {
         "nazwa": get(sprzedawca, ".//fa:Nazwa"),
         "nip": get(sprzedawca, ".//fa:NIP"),
-        "adres": get(sprzedawca, ".//fa:AdresL1"),
+        "adres": build_address(sprzedawca),
     }
 
     data["nabywca"] = {
         "nazwa": get(nabywca, ".//fa:Nazwa"),
         "nip": get(nabywca, ".//fa:NIP"),
-        "adres": get(nabywca, ".//fa:AdresL1"),
+        "adres": build_address(nabywca),
     }
 
     items = []
     for poz in root.findall(".//fa:FaWiersz", NS):
-        netto = get(poz, "fa:P_11") or get(poz, "fa:P_11A")
+        netto = get(poz, "fa:P_11")
         vat_proc = get(poz, "fa:P_12")
 
         try:
             netto_f = float(netto)
-        except:
-            netto_f = 0
-
-        try:
             vat_f = float(vat_proc)
+            vat_kwota = netto_f * vat_f / 100
+            brutto = netto_f + vat_kwota
         except:
-            vat_f = 0
-
-        vat_kwota = netto_f * vat_f / 100
-        brutto = netto_f + vat_kwota
+            vat_kwota = 0
+            brutto = 0
 
         items.append({
             "nazwa": get(poz, "fa:P_7"),
@@ -161,9 +163,8 @@ def html_invoice(d):
 
         rate = item["vat_proc"]
         vat_summary.setdefault(rate, {"netto": 0, "vat": 0})
-
-        vat_summary[rate]["netto"] += safe_float(item["netto"])
-        vat_summary[rate]["vat"] += safe_float(item["vat_kwota"])
+        vat_summary[rate]["netto"] += float(item["netto"])
+        vat_summary[rate]["vat"] += float(item["vat_kwota"])
 
     vat_rows = ""
     for rate, vals in vat_summary.items():
@@ -287,8 +288,7 @@ def show(xml_path):
     tree = etree.parse(xml_path)
     root = tree.getroot()
 
-    data = parse_invoice(root, xml_path)
-
+    data = parse_invoice(root)
     html = html_invoice(data)
 
     f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")

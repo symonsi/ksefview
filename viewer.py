@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 from lxml import etree
 import tempfile
 import webbrowser
@@ -43,16 +44,20 @@ def forma_platnosci_txt(v):
     }.get(v, v)
 
 
-# 🔥 NOWA FUNKCJA – adres z kodem i miastem
+# 🔥 POPRAWIONA FUNKCJA
 def build_address(p):
     ulica = get(p, ".//fa:AdresL1")
-    kod = get(p, ".//fa:KodPocztowy")
-    miasto = get(p, ".//fa:Miejscowosc")
 
-    if not kod:
-        kod = get(p, ".//fa:Adres/fa:KodPocztowy")
-    if not miasto:
-        miasto = get(p, ".//fa:Adres/fa:Miejscowosc")
+    kod = get(p, ".//fa:KodPocztowy") or get(p, ".//fa:Adres/fa:KodPocztowy")
+    miasto = get(p, ".//fa:Miejscowosc") or get(p, ".//fa:Adres/fa:Miejscowosc")
+
+    # fallback – wyciąganie z tekstu
+    if not kod or not miasto:
+        m = re.search(r"(\d{2}-\d{3})\s+(.+)$", ulica)
+        if m:
+            kod = kod or m.group(1)
+            miasto = miasto or m.group(2)
+            ulica = ulica.replace(m.group(0), "").strip(", ")
 
     line2 = " ".join(x for x in [kod, miasto] if x)
 

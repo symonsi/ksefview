@@ -16,13 +16,20 @@ def get(el, path):
     return x.text.strip() if x is not None and x.text else ""
 
 
+def to_float(v):
+    try:
+        return float(str(v).replace(",", ".").strip())
+    except:
+        return 0.0
+
+
 def format_date(dt):
     return dt.split("T")[0] if dt else ""
 
 
 def format_number(n):
     try:
-        n = float(n)
+        n = float(str(n).replace(",", "."))
         return str(int(n)) if n.is_integer() else str(n).replace(".", ",")
     except:
         return ""
@@ -30,7 +37,7 @@ def format_number(n):
 
 def format_money(n):
     try:
-        return f"{float(n):.2f}".replace(".", ",")
+        return f"{to_float(n):.2f}".replace(".", ",")
     except:
         return ""
 
@@ -127,14 +134,11 @@ def parse_invoice(root):
         netto = get(poz, "fa:P_11")
         vat_proc = get(poz, "fa:P_12")
 
-        try:
-            netto_f = float(netto)
-            vat_f = float(vat_proc)
-            vat_kwota = netto_f * vat_f / 100
-            brutto = netto_f + vat_kwota
-        except:
-            vat_kwota = 0
-            brutto = 0
+        netto_f = to_float(netto)
+        vat_f = to_float(vat_proc)
+
+        vat_kwota = netto_f * vat_f / 100
+        brutto = netto_f + vat_kwota
 
         items.append({
             "nazwa": get(poz, "fa:P_7"),
@@ -178,7 +182,7 @@ def html_invoice(d):
         vat_summary.setdefault(rate, {"netto": 0, "vat": 0})
 
         try:
-            netto_val = float(item["netto"])
+            netto_val = float(str(item["netto"]).replace(",", "."))
         except:
             netto_val = 0
 

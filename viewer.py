@@ -74,6 +74,7 @@ def build_address(p):
         lines.append(ulica2)
 
     line2 = " ".join(x for x in [kod, miasto] if x)
+
     if line2:
         lines.append(line2)
 
@@ -100,11 +101,14 @@ def parse_invoice(root):
     data["bank"] = get(root, ".//fa:RachunekBankowy/fa:NazwaBanku")
 
     opisy = []
+
     for o in root.findall(".//fa:DodatkowyOpis", NS):
         k = get(o, "fa:Klucz")
         w = get(o, "fa:Wartosc")
+
         if k or w:
             opisy.append(f"{k}: {w}")
+
     data["opisy"] = opisy
 
     data["zaplacono"] = get(root, ".//fa:Zaplacono")
@@ -132,18 +136,16 @@ def parse_invoice(root):
 
     for poz in root.findall(".//fa:FaWiersz", NS):
 
-        netto = get(poz, "fa:P_11") or get(poz, "fa:P_11A")
+        netto = get(poz, "fa:P_11")
+
         vat_proc = get(poz, "fa:P_12")
 
         vat_kwota = get(poz, "fa:P_11Vat")
 
         brutto = get(poz, "fa:P_11Brutto")
 
-        if not vat_kwota:
-            vat_kwota = 0
-
         if not brutto:
-            brutto = to_float(netto) + to_float(vat_kwota)
+            brutto = get(poz, "fa:P_11A")
 
         items.append({
             "nazwa": get(poz, "fa:P_7"),
@@ -166,6 +168,7 @@ def parse_invoice(root):
 
 
 def html_invoice(d):
+
     rows = ""
 
     vat_summary = {}
@@ -186,7 +189,12 @@ def html_invoice(d):
         """
 
         rate = item["vat_proc"]
-        vat_summary.setdefault(rate, {"netto": 0, "vat": 0, "brutto": 0})
+
+        vat_summary.setdefault(rate, {
+            "netto": 0,
+            "vat": 0,
+            "brutto": 0
+        })
 
         vat_summary[rate]["netto"] += to_float(item["netto"])
         vat_summary[rate]["vat"] += to_float(item["vat_kwota"])
@@ -195,6 +203,7 @@ def html_invoice(d):
     vat_rows = ""
 
     for rate, vals in vat_summary.items():
+
         vat_rows += f"""
         <tr>
             <td>{rate}%</td>
@@ -220,7 +229,9 @@ def html_invoice(d):
     <html>
     <head>
     <meta charset="utf-8">
+
     <style>
+
         body {{
             font-family: Arial;
             background:#eee;
@@ -291,7 +302,9 @@ def html_invoice(d):
             width:50%;
             margin-top:20px;
         }}
+
     </style>
+
     </head>
 
     <body>
@@ -308,6 +321,7 @@ def html_invoice(d):
             </div>
 
             <table class="dates">
+
                 <tr>
                     <td>Wystawienia:</td>
                     <td>{d["data_wystawienia"]}</td>
@@ -329,6 +343,7 @@ def html_invoice(d):
                 </tr>
 
                 {okres_html}
+
             </table>
 
         </div>
@@ -336,19 +351,23 @@ def html_invoice(d):
         <div class="row">
 
             <div class="box">
+
                 <b>Sprzedawca:</b><br>
 
                 {d["sprzedawca"]["nazwa"]}<br>
                 NIP: {d["sprzedawca"]["nip"]}<br>
                 {d["sprzedawca"]["adres"]}
+
             </div>
 
             <div class="box">
+
                 <b>Nabywca:</b><br>
 
                 {d["nabywca"]["nazwa"]}<br>
                 NIP: {d["nabywca"]["nip"]}<br>
                 {d["nabywca"]["adres"]}
+
             </div>
 
         </div>
@@ -439,13 +458,19 @@ def html_invoice(d):
 
 
 def show(xml_path):
+
     tree = etree.parse(xml_path)
     root = tree.getroot()
 
     data = parse_invoice(root)
+
     html = html_invoice(data)
 
-    f = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
+    f = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".html"
+    )
+
     f.write(html.encode("utf-8"))
     f.close()
 
@@ -455,9 +480,11 @@ def show(xml_path):
 if __name__ == "__main__":
 
     if len(sys.argv) > 1:
+
         show(sys.argv[1])
 
     else:
+
         Tk().withdraw()
 
         file_path = filedialog.askopenfilename(
@@ -466,4 +493,3 @@ if __name__ == "__main__":
 
         if file_path:
             show(file_path)
-            

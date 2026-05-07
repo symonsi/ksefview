@@ -44,7 +44,6 @@ def forma_platnosci_txt(v):
     }.get(v, v)
 
 
-# 🔥 POPRAWIONA FUNKCJA (AdresL2 + kod + miasto + fallback)
 def build_address(p):
     ulica1 = get(p, ".//fa:AdresL1")
     ulica2 = get(p, ".//fa:AdresL2")
@@ -177,8 +176,19 @@ def html_invoice(d):
 
         rate = item["vat_proc"]
         vat_summary.setdefault(rate, {"netto": 0, "vat": 0})
-        vat_summary[rate]["netto"] += float(item["netto"])
-        vat_summary[rate]["vat"] += float(item["vat_kwota"])
+
+        try:
+            netto_val = float(item["netto"])
+        except:
+            netto_val = 0
+
+        try:
+            vat_val = float(item["vat_kwota"])
+        except:
+            vat_val = 0
+
+        vat_summary[rate]["netto"] += netto_val
+        vat_summary[rate]["vat"] += vat_val
 
     vat_rows = ""
     for rate, vals in vat_summary.items():

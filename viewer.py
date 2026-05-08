@@ -147,14 +147,11 @@ def parse_invoice(root):
                 to_float(netto) * to_float(vat_proc) / 100
             )
 
-        # 🔥 najpierw próbujemy pobrać brutto
         brutto = get(poz, "fa:P_11Brutto")
 
-        # 🔥 część ERP używa P_11A jako brutto
         if not brutto:
             brutto = get(poz, "fa:P_11A")
 
-        # 🔥 dopiero na końcu liczymy
         if not brutto:
             brutto = (
                 to_float(netto) + to_float(vat_kwota)
@@ -479,15 +476,22 @@ def show(xml_path):
 
     html = html_invoice(data)
 
-    f = tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=".html"
-    )
+    if data["ksef_number"]:
+        filename = data["ksef_number"]
+    else:
+        filename = data["numer"] or "faktura"
 
-    f.write(html.encode("utf-8"))
-    f.close()
+    safe_name = re.sub(r'[\\\\/*?:"<>|]', "_", filename)
 
-    webbrowser.open(f.name)
+    html_path = os.path.join(
+        tempfile.gettempdir(),
+        safe_name
+    ) + ".html"
+
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    webbrowser.open(html_path)
 
 
 if __name__ == "__main__":

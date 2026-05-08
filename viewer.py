@@ -142,10 +142,23 @@ def parse_invoice(root):
 
         vat_kwota = get(poz, "fa:P_11Vat")
 
+        if not vat_kwota:
+            vat_kwota = (
+                to_float(netto) * to_float(vat_proc) / 100
+            )
+
+        # 🔥 najpierw próbujemy pobrać brutto
         brutto = get(poz, "fa:P_11Brutto")
 
+        # 🔥 część ERP używa P_11A jako brutto
         if not brutto:
             brutto = get(poz, "fa:P_11A")
+
+        # 🔥 dopiero na końcu liczymy
+        if not brutto:
+            brutto = (
+                to_float(netto) + to_float(vat_kwota)
+            )
 
         items.append({
             "nazwa": get(poz, "fa:P_7"),

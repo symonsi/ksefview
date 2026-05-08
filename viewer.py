@@ -85,7 +85,10 @@ def parse_invoice(root):
     data = {}
 
     data["numer"] = get(root, ".//fa:P_2")
-    data["ksef_number"] = get(root, ".//fa:KSeFNumber")
+    data["ksef_number"] = (
+        get(root, ".//fa:KSeFNumber")
+        or get(root, ".//fa:NumerKSeF")
+    )
 
     data["data_wystawienia"] = format_date(get(root, ".//fa:P_1"))
     data["data_sprzedazy"] = format_date(get(root, ".//fa:P_6"))

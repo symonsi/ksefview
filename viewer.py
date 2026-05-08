@@ -327,7 +327,7 @@ def html_invoice(d):
                 <h2>FAKTURA</h2>
 
                 <b>Numer:</b> {d["numer"]}<br>
-                <b>KSeF:</b> {d["ksef_number"]}<br>
+                <b>KSeF:</b> {d["ksef_number"] or d["source_filename"]}<br>
             </div>
 
             <table class="dates">
@@ -473,6 +473,10 @@ def show(xml_path):
     root = tree.getroot()
 
     data = parse_invoice(root)
+
+    data["source_filename"] = os.path.splitext(
+        os.path.basename(xml_path)
+    )[0]
 
     html = html_invoice(data)
 
